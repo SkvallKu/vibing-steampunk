@@ -332,11 +332,12 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	// it, so a server connected to another system would otherwise log on over
 	// RFC as that system's user.
 	in := saprfc.Input{
-		URL:      s.config.BaseURL,
-		User:     s.config.Username,
-		Password: s.config.Password,
-		Client:   s.config.Client,
-		Language: s.config.Language,
+		URL:          s.config.BaseURL,
+		User:         s.config.Username,
+		Password:     s.config.Password,
+		Client:       s.config.Client,
+		Language:     s.config.Language,
+		RFCSaprouter: os.Getenv("SAP_SAPROUTER"),
 	}
 	if in.User == "" && sameSystem(os.Getenv("SAP_URL"), os.Getenv("SAP_CLIENT"), s.config.BaseURL, s.config.Client) {
 		in.User, in.Password = os.Getenv("SAP_USER"), os.Getenv("SAP_PASSWORD")
@@ -357,12 +358,16 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 			if in.RFCPassword == "" {
 				in.RFCPassword = os.Getenv(fmt.Sprintf("VSP_%s_RFC_PASSWORD", strings.ToUpper(name)))
 			}
+			if sys.RFCSaprouter != "" {
+				in.RFCSaprouter = sys.RFCSaprouter
+			}
 		}
 	}
 	in.HostFlag = getStringParam(params, "host")
 	in.SysnrFlag = getStringParam(params, "sysnr")
 	in.UserFlag = getStringParam(params, "user")
 	in.PortFlag = intParam(params, "port", 0)
+	in.SaprouterFlag = getStringParam(params, "saprouter")
 	// The server's identity pin goes with the RFC logon: a per-call user that
 	// contradicts it is refused before dialling, and the system behind the
 	// gateway is checked after logon (saprfc.OpenWithTimeout).
@@ -390,6 +395,13 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 // the caller's choosing. Naming the server's own destination explicitly is
 // allowed.
 func checkRFCOverride(in saprfc.Input) error {
+	// A per-call route is the same kind of override: the configured
+	// credentials would travel through a SAProuter the caller chose.
+	if in.SaprouterFlag != "" && !saprfc.SameRoute(in.SaprouterFlag, in.RFCSaprouter) {
+		return fmt.Errorf("rfc saprouter override %q is blocked: it differs from this server's own route %q, "+
+			"and the configured RFC credentials are not sent through another router "+
+			"(set rfc_saprouter for that system in .vsp.json)", in.SaprouterFlag, in.RFCSaprouter)
+	}
 	if in.HostFlag == "" && in.SysnrFlag == "" && in.PortFlag == 0 {
 		return nil
 	}

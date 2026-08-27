@@ -139,3 +139,20 @@ func TestRFCOverride_AnotherHostIsNeverDialled(t *testing.T) {
 		t.Errorf("an override to another host dialled %d time(s)", n)
 	}
 }
+
+// A per-call saprouter is a destination override too: the configured
+// credentials would go through a router the caller chose. The server's own
+// route, however it is spelt, stays allowed.
+func TestRFCDestination_AnotherSaprouterIsRefused(t *testing.T) {
+	s := serverFor(t, "https://prodsys-a.example:44300", "100", "")
+	t.Setenv("SAP_SAPROUTER", "/H/router.example/S/3299")
+
+	if dest, err := s.rfcDestination(map[string]any{"saprouter": "/H/attacker.example/S/3299"}); err == nil {
+		t.Errorf("override went through router %q", dest.Router)
+	} else if !strings.Contains(err.Error(), "is blocked") {
+		t.Errorf("unexpected error %v", err)
+	}
+	if _, err := s.rfcDestination(map[string]any{"saprouter": "/H/router.example/S/3299/H/"}); err != nil {
+		t.Errorf("own route: %v", err)
+	}
+}
