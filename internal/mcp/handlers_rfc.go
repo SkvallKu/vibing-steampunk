@@ -240,12 +240,13 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 // settings of the default .vsp.json system, and any per-call override.
 func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	in := saprfc.Input{
-		URL:      s.config.BaseURL,
-		User:     s.config.Username,
-		Password: s.config.Password,
-		Client:   s.config.Client,
-		Language: s.config.Language,
-		RFCUser:  os.Getenv("SAP_USER"),
+		URL:          s.config.BaseURL,
+		User:         s.config.Username,
+		Password:     s.config.Password,
+		Client:       s.config.Client,
+		Language:     s.config.Language,
+		RFCUser:      os.Getenv("SAP_USER"),
+		RFCSaprouter: os.Getenv("SAP_SAPROUTER"),
 	}
 	if pwd := os.Getenv("SAP_PASSWORD"); pwd != "" {
 		in.RFCPassword = pwd
@@ -260,12 +261,16 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 			if sys.RFCPassword != "" {
 				in.RFCPassword = sys.RFCPassword
 			}
+			if sys.RFCSaprouter != "" {
+				in.RFCSaprouter = sys.RFCSaprouter
+			}
 		}
 	}
 	in.HostFlag = getStringParam(params, "host")
 	in.SysnrFlag = getStringParam(params, "sysnr")
 	in.UserFlag = getStringParam(params, "user")
 	in.PortFlag = intParam(params, "port", 0)
+	in.SaprouterFlag = getStringParam(params, "saprouter")
 
 	return saprfc.Resolve(in)
 }

@@ -458,24 +458,43 @@ func rfcDestinationFor(cmd *cobra.Command) (saprfc.Params, error) {
 			if sys, serr := cfg.GetSystem(params.Name); serr == nil {
 				in.RFCHost, in.RFCSysnr, in.RFCPort = sys.RFCHost, sys.RFCSysnr, sys.RFCPort
 				in.RFCUser, in.RFCPassword = sys.RFCUser, sys.RFCPassword
+				in.RFCSaprouter = sys.RFCSaprouter
 			}
 		}
 	} else {
 		in.RFCUser, in.RFCPassword = os.Getenv("SAP_USER"), os.Getenv("SAP_PASSWORD")
+		in.RFCSaprouter = os.Getenv("SAP_SAPROUTER")
 	}
 	in.HostFlag, _ = cmd.Flags().GetString("rfc-host")
 	in.SysnrFlag, _ = cmd.Flags().GetString("sysnr")
 	in.PortFlag, _ = cmd.Flags().GetInt("port")
 	in.UserFlag, _ = cmd.Flags().GetString("rfc-user")
+	in.SaprouterFlag, _ = cmd.Flags().GetString("saprouter")
 
 	dest, err := saprfc.Resolve(in)
 	if err != nil {
 		return saprfc.Params{}, err
 	}
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
-		fmt.Fprintf(os.Stderr, "[INFO] RFC %s:%d (sysnr %s) client %s user %s\n", dest.Host, dest.Port, dest.Sysnr, dest.Client, dest.User)
+		via := "direct"
+		if dest.Router != "" {
+			via = "via SAProuter " + redactRouterPW(dest.Router)
+		}
+		fmt.Fprintf(os.Stderr, "[INFO] RFC %s:%d (sysnr %s) client %s user %s [%s]\n", dest.Host, dest.Port, dest.Sysnr, dest.Client, dest.User, via)
 	}
 	return dest, nil
+}
+
+// redactRouterPW hides any "/W/<password>" hop in a SAProuter route string so a
+// verbose log line never carries the router password.
+func redactRouterPW(route string) string {
+	parts := strings.Split(route, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if strings.EqualFold(parts[i], "W") && parts[i+1] != "" {
+			parts[i+1] = "***"
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 func emitRFC(v any) error {
@@ -507,6 +526,7 @@ func init() {
 	rfcCmd.PersistentFlags().String("sysnr", "", "SAP system number, 00..99 (default: derived from the URL port)")
 	rfcCmd.PersistentFlags().Int("port", 0, "RFC gateway port (default: 3300 + system number)")
 	rfcCmd.PersistentFlags().String("rfc-user", "", "RFC logon user (default: rfc_user / SAP_USER / the system's user)")
+	rfcCmd.PersistentFlags().String("saprouter", "", "SAProuter route, e.g. /H/router/S/3299 (default: rfc_saprouter / SAP_SAPROUTER)")
 
 	rfcADTCmd.Flags().StringArrayP("header", "H", nil, "Request header NAME=VALUE (repeatable)")
 	rfcADTCmd.Flags().String("body", "", "Read the request body from a file")

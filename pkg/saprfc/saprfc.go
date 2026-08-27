@@ -25,6 +25,12 @@ type Params struct {
 	User     string
 	Password Secret
 	Language string
+	// Router is a SAProuter route prefix that ends in "/H/", e.g.
+	// "/H/router.example.com/S/3299/H/". Empty means a direct connection to the
+	// gateway. Resolve() normalizes a user-supplied "/H/host/S/port" to this
+	// form. open-rfc-go appends the gateway hop and performs the NI_ROUTE
+	// handshake — the same traversal Eclipse/JCo do.
+	Router string
 }
 
 // Secret is a string that will not print itself. A logon password reaches a log
@@ -57,17 +63,19 @@ type Input struct {
 
 	// Per-system RFC settings (.vsp.json), including credentials that already
 	// resolve from the RFC environment (SAP_USER/SAP_PASSWORD).
-	RFCHost     string
-	RFCSysnr    string
-	RFCPort     int
-	RFCUser     string
-	RFCPassword string
+	RFCHost      string
+	RFCSysnr     string
+	RFCPort      int
+	RFCUser      string
+	RFCPassword  string
+	RFCSaprouter string // rfc_saprouter / VSP_<SYS>_RFC_SAPROUTER / SAP_SAPROUTER
 
 	// Per-command overrides (flags).
-	HostFlag  string
-	SysnrFlag string
-	PortFlag  int
-	UserFlag  string
+	HostFlag      string
+	SysnrFlag     string
+	PortFlag      int
+	UserFlag      string
+	SaprouterFlag string
 }
 
 // Resolve turns an Input into RFC destination parameters.
@@ -120,7 +128,25 @@ func Resolve(in Input) (Params, error) {
 		User:     user,
 		Password: Secret(password),
 		Language: lang[:1],
+		Router:   normalizeRoutePrefix(firstNonEmpty(in.SaprouterFlag, in.RFCSaprouter)),
 	}, nil
+}
+
+// normalizeRoutePrefix turns a route string into the "/H/…/H/" prefix that
+// open-rfc-go's CompleteRoute expects (it appends the gateway hop itself).
+// A user typically writes the whole route to the router, e.g.
+// "/H/router/S/3299" or "/H/router/S/3299/W/secret"; both become that plus a
+// trailing "/H/". A value that already ends in "/H/" is left untouched. Empty
+// stays empty (direct connection).
+func normalizeRoutePrefix(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasSuffix(s, "/H/") {
+		return s
+	}
+	return strings.TrimRight(s, "/") + "/H/"
 }
 
 // Open dials an RFC client for the resolved parameters.
@@ -143,6 +169,7 @@ func OpenWithTimeout(ctx context.Context, p Params, timeout time.Duration) (*rfc
 		User:             p.User,
 		Password:         p.Password.Reveal(),
 		Language:         p.Language,
+		Router:           p.Router,
 	})
 }
 
