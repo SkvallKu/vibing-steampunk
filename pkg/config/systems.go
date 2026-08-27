@@ -54,6 +54,10 @@ type SystemConfig struct {
 	RFCPort     int    `json:"rfc_port,omitempty"`
 	RFCUser     string `json:"rfc_user,omitempty"`
 	RFCPassword string `json:"rfc_password,omitempty"`
+	// SAProuter route string for the RFC hop, e.g. "/H/router.example.com/S/3299".
+	// Needed when the gateway is only reachable through a SAProuter (the case
+	// the adt-rfc-bridge exists for). Empty means a direct gateway connection.
+	RFCSaprouter string `json:"rfc_saprouter,omitempty"`
 
 	// TransportCmd is the argv (no shell) of a helper process that carries
 	// every ADT request over its stdin/stdout instead of a TCP connection; the
@@ -298,6 +302,18 @@ func (c *SystemsConfig) GetSystem(name string) (*SystemConfig, error) {
 	if sys.RFCUser == "" {
 		if u := os.Getenv("SAP_USER"); u != "" {
 			sys.RFCUser = u
+		}
+	}
+	// Resolve the SAProuter route: VSP_<SYSTEM>_RFC_SAPROUTER, then SAP_SAPROUTER.
+	if sys.RFCSaprouter == "" {
+		envKey := fmt.Sprintf("VSP_%s_RFC_SAPROUTER", strings.ToUpper(name))
+		if r := strings.TrimSpace(os.Getenv(envKey)); r != "" {
+			sys.RFCSaprouter = r
+		}
+	}
+	if sys.RFCSaprouter == "" {
+		if r := strings.TrimSpace(os.Getenv("SAP_SAPROUTER")); r != "" {
+			sys.RFCSaprouter = r
 		}
 	}
 
