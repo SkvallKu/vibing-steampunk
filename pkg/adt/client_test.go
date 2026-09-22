@@ -217,6 +217,71 @@ func TestClient_CheckObjectPackageSafety_NormalizesObjectURLs(t *testing.T) {
 	}
 }
 
+// quickSearch on 7.50 leaves packageName off PROG/P and PROG/I hits (CLAS/OC
+// keeps it), so the gate has to fall back to the object's own metadata.
+func TestClient_CheckObjectPackageSafety_FallsBackToMetadata(t *testing.T) {
+	searchNoPackage := func(uri, objType, name string) *http.Response {
+		return newTestResponse(`<?xml version="1.0" encoding="utf-8"?><adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core">` +
+			`<adtcore:objectReference adtcore:uri="` + uri + `" adtcore:type="` + objType + `" adtcore:name="` + name + ` (Include)"/>` +
+			`</adtcore:objectReferences>`)
+	}
+	metadata := func(pkg string) *http.Response {
+		return newTestResponse(`<?xml version="1.0" encoding="utf-8"?>` +
+			`<include:abapInclude xmlns:include="http://www.sap.com/adt/programs/includes" xmlns:adtcore="http://www.sap.com/adt/core" adtcore:name="ZTEST_INCL">` +
+			`<include:contextRef adtcore:uri="/sap/bc/adt/programs/programs/zmain"><adtcore:packageRef adtcore:name="ZNESTED"/></include:contextRef>` +
+			`<adtcore:packageRef adtcore:uri="/sap/bc/adt/vit/wb/object_type/devck/object_name/%24TMP" adtcore:type="DEVC/K" adtcore:name="` + pkg + `"/>` +
+			`</include:abapInclude>`)
+	}
+
+	tests := []struct {
+		name    string
+		metaPkg string
+		wantErr string
+	}{
+		{name: "allowed package from metadata", metaPkg: "$TMP"},
+		{name: "disallowed package from metadata", metaPkg: "ZOTHER", wantErr: "operations on package 'ZOTHER'"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockTransportClient{
+				responses: map[string]*http.Response{
+					"search": searchNoPackage("/sap/bc/adt/programs/includes/ztest_incl", "PROG/I", "ZTEST_INCL"),
+					"/sap/bc/adt/programs/includes/ztest_incl": metadata(tt.metaPkg),
+					"discovery": newTestResponse("OK"),
+				},
+			}
+
+			cfg := NewConfig("https://sap.example.com:44300", "user", "pass", WithAllowedPackages("$TMP"))
+			client := NewClientWithTransport(cfg, NewTransportWithClient(cfg, mock))
+
+			err := client.checkObjectPackageSafety(context.Background(), "/sap/bc/adt/programs/includes/ztest_incl/source/main")
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("checkObjectPackageSafety failed: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParsePackageRef_IgnoresNestedRefs(t *testing.T) {
+	doc := `<p:abapProgram xmlns:p="x" xmlns:adtcore="http://www.sap.com/adt/core">` +
+		`<p:ctx><adtcore:packageRef adtcore:name="ZNESTED"/></p:ctx>` +
+		`<adtcore:packageRef adtcore:name="$TMP"/></p:abapProgram>`
+	got, err := parsePackageRef([]byte(doc))
+	if err != nil || got != "$TMP" {
+		t.Fatalf("parsePackageRef = %q, %v; want $TMP", got, err)
+	}
+	if _, err := parsePackageRef([]byte(`<p:abapProgram xmlns:p="x"/>`)); err == nil {
+		t.Fatal("parsePackageRef should fail without a packageRef")
+	}
+}
+
 func TestNormalizeObjectURLForPackageCheck(t *testing.T) {
 	cases := []struct {
 		input string

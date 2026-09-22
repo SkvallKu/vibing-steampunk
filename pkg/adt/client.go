@@ -1,11 +1,13 @@
 package adt
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -182,7 +184,58 @@ func (c *Client) getObjectPackage(ctx context.Context, objectURL string) (string
 		}
 	}
 
+	// quickSearch does not carry packageName for every object type: on a 7.50
+	// system it is there for CLAS/OC and missing for PROG/P and PROG/I, so
+	// every update of a program and every write to an include failed the
+	// package whitelist even with TADIR saying $TMP. The object's own metadata
+	// names its package in adtcore:packageRef on every release, so ask it.
+	if pkg, err := c.getObjectPackageFromMetadata(ctx, normalized); err == nil && pkg != "" {
+		return pkg, nil
+	}
+
 	return "", fmt.Errorf("package metadata not found")
+}
+
+// getObjectPackageFromMetadata reads the package from the adtcore:packageRef
+// of the object's own metadata document (GET on the object URL).
+func (c *Client) getObjectPackageFromMetadata(ctx context.Context, objectURL string) (string, error) {
+	resp, err := c.transport.Request(ctx, objectURL, &RequestOptions{
+		Method: http.MethodGet,
+	})
+	if err != nil {
+		return "", err
+	}
+	return parsePackageRef(resp.Body)
+}
+
+// parsePackageRef returns the name of the packageRef that is a direct child of
+// the document root. Nested objects may carry packageRefs of their own, and
+// those name other objects' packages.
+func parsePackageRef(data []byte) (string, error) {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	depth := 0
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return "", fmt.Errorf("no packageRef in object metadata")
+		}
+		if err != nil {
+			return "", fmt.Errorf("parsing object metadata: %w", err)
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			depth++
+			if depth == 2 && t.Name.Local == "packageRef" {
+				for _, a := range t.Attr {
+					if a.Name.Local == "name" {
+						return a.Value, nil
+					}
+				}
+			}
+		case xml.EndElement:
+			depth--
+		}
+	}
 }
 
 func normalizeObjectURLForPackageCheck(objectURL string) string {
