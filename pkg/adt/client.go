@@ -1191,6 +1191,13 @@ func (c *Client) GetTable(ctx context.Context, tableName string) (string, error)
 		Method: http.MethodGet,
 	})
 	if err != nil {
+		// Before 7.52 there is no source for DDIC tables; the dictionary
+		// tables still say what the source would.
+		if isNotFound(err) {
+			if src, ferr := c.ddicSourceFromTables(ctx, tableName); ferr == nil {
+				return src, nil
+			}
+		}
 		return "", fmt.Errorf("getting table source: %w", err)
 	}
 
@@ -1224,6 +1231,11 @@ func (c *Client) GetStructure(ctx context.Context, structName string) (string, e
 		Method: http.MethodGet,
 	})
 	if err != nil {
+		if isNotFound(err) {
+			if src, ferr := c.ddicSourceFromTables(ctx, structName); ferr == nil {
+				return src, nil
+			}
+		}
 		return "", fmt.Errorf("getting structure source: %w", err)
 	}
 
