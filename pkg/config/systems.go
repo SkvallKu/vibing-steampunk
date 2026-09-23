@@ -53,6 +53,14 @@ type SystemConfig struct {
 	// the adt-rfc-bridge exists for). Empty means a direct gateway connection.
 	RFCSaprouter string `json:"rfc_saprouter,omitempty"`
 
+	// RFCCpicStreaming admits an RFC-tunnelled write/syntax-check whose body
+	// exceeds ~28000 bytes, by streaming it over classic RFC instead of
+	// failing with "CPIC streaming is disabled" (see VSP_ISSUES.md §1). Off
+	// by default: unverified against a live system as of this option's
+	// introduction, so it must be opted into per system, not assumed safe
+	// everywhere an RFC tunnel is configured.
+	RFCCpicStreaming bool `json:"rfc_cpic_streaming,omitempty"`
+
 	// Optional safety settings per system
 	ReadOnly        bool     `json:"read_only,omitempty"`
 	AllowedPackages []string `json:"allowed_packages,omitempty"`

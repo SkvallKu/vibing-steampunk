@@ -31,6 +31,11 @@ type Params struct {
 	// form. open-rfc-go appends the gateway hop and performs the NI_ROUTE
 	// handshake — the same traversal Eclipse/JCo do.
 	Router string
+	// CpicStreaming admits an outgoing RFC-tunnelled request past the compact
+	// ~28000-byte F_SAP_SEND slice (VSP_ISSUES.md §1) instead of failing with
+	// "CPIC streaming is disabled". Off by default — see
+	// pkg/config.SystemConfig.RFCCpicStreaming for why this stays opt-in.
+	CpicStreaming bool
 }
 
 // Secret is a string that will not print itself. A logon password reaches a log
@@ -69,6 +74,8 @@ type Input struct {
 	RFCUser      string
 	RFCPassword  string
 	RFCSaprouter string // rfc_saprouter / VSP_<SYS>_RFC_SAPROUTER / SAP_SAPROUTER
+	// RFCCpicStreaming mirrors pkg/config.SystemConfig.RFCCpicStreaming.
+	RFCCpicStreaming bool
 
 	// Per-command overrides (flags).
 	HostFlag      string
@@ -121,14 +128,15 @@ func Resolve(in Input) (Params, error) {
 		return Params{}, fmt.Errorf("no RFC credentials: set rfc_user/rfc_password in .vsp.json, SAP_USER/SAP_PASSWORD, or the system's user/password")
 	}
 	return Params{
-		Host:     host,
-		Sysnr:    fmt.Sprintf("%02d", n),
-		Port:     port,
-		Client:   firstNonEmpty(in.Client, "001"),
-		User:     user,
-		Password: Secret(password),
-		Language: lang[:1],
-		Router:   normalizeRoutePrefix(firstNonEmpty(in.SaprouterFlag, in.RFCSaprouter)),
+		Host:          host,
+		Sysnr:         fmt.Sprintf("%02d", n),
+		Port:          port,
+		Client:        firstNonEmpty(in.Client, "001"),
+		User:          user,
+		Password:      Secret(password),
+		Language:      lang[:1],
+		Router:        normalizeRoutePrefix(firstNonEmpty(in.SaprouterFlag, in.RFCSaprouter)),
+		CpicStreaming: in.RFCCpicStreaming,
 	}, nil
 }
 
@@ -170,6 +178,7 @@ func OpenWithTimeout(ctx context.Context, p Params, timeout time.Duration) (*rfc
 		Password:         p.Password.Reveal(),
 		Language:         p.Language,
 		Router:           p.Router,
+		CpicStreaming:    p.CpicStreaming,
 	})
 }
 
