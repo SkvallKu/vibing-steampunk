@@ -4,7 +4,8 @@ English | [Русский](FORK.ru.md)
 
 This is a fork of [oisee/vibing-steampunk](https://github.com/oisee/vibing-steampunk)
 that lets `vsp` work with SAP systems reachable **only over classic RFC through a
-SAProuter** — no ADT/HTTPS port, no SAP NW RFC SDK, no pyrfc.
+SAProuter** — no ADT/HTTPS port, no SAP NW RFC SDK, no pyrfc. It also carries
+fixes for older releases (7.40, 7.50) where upstream's reads fail.
 
 The branch `patched` is upstream `main` plus the commits listed below, rebased on
 each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is based on.
@@ -17,6 +18,17 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(adt): tunnel the ordinary ADT client over RFC too` | With only the first patch, just the explicit `rfc` surface used the route; `pkg/adt.Client` — behind `GetSource`, `GetClassInfo`, `SearchObject`, `Activate` and most other tools — still dialled HTTP and timed out. When `rfc_saprouter` is set, the ADT client now runs over the RFC tunnel (`SADT_REST_RFC_ENDPOINT`), and CSRF handling is skipped on that channel. Systems without a router are untouched. |
 | `feat(rfc): opt-in CpicStreaming` | Writes and syntax checks through the tunnel failed above ~28000 bytes (`CPIC streaming is disabled…`). The limit was a hardcoded client flag in `open-rfc-go`, not SAP Basis. Adds `rfc_cpic_streaming` (off by default). Needs the [open-rfc-go fork](https://github.com/SkvallKu/open-rfc-go). |
 | `fix(adt): resolve package from object metadata` | When quickSearch omits the package of an object, it is read from the object's own metadata instead of being reported as missing. |
+
+### Older releases (7.40, 7.50)
+
+Found on SAP_BASIS 740 SP06 and checked against 750. Each commit builds and works
+on its own, so upstream can take any of them separately.
+
+| Commit | What it does |
+|---|---|
+| `fix(adt): read classes right on 7.40, and GetClassInfo on every release` | On 7.40 the class object structure types a method as `CLAS/OO` (7.50+: `CLAS/OM`), so `GetSource … method=` and method edits answered "method not found". `GetClassInfo` returned no methods or attributes on any release, and `isFinal: false` for final classes; it now reads the structure's type codes and final/abstract attributes, and superclass and interfaces from the source. |
+| `fix(adt): table queries on releases with the classic SQL parser` | Before 7.40 SP08 there is no freestyle SQL, and data preview parses classic Open SQL: `SELECT a, b` and `ORDER BY a, b` fail, and so does a long statement with `IN ('A', 'B')`. Statements get blanks after commas and inside parentheses, and on a 400 one retry without the commas between columns. `RunQuery` (and with it `GetSystemInfo` and `vsp query`) answers a single-table SELECT through data preview when freestyle is missing. |
+| `feat(adt): GetTable and GetStructure answer from DD02L/DD03L` | ADT serves DDIC table source only from 7.52. On a 404 the definition is written from DD02L/DD02T/DD03L in the shape of the DDL source, with a first line saying it is generated. |
 
 ## Configuration
 
@@ -80,13 +92,16 @@ go work init ./vibing-steampunk ./open-rfc-go
 - ADT over RFC is stateless per call; activation over the tunnel is limited by SAP
   itself, not by the patch.
 - `vsp compat` still probes HTTP ports directly and hangs on RFC-only systems.
+- On 7.40 the data preview reports no column length and never marks a key column,
+  so `GetTableContents` shows `Length: 0` and `IsKey: false` there. That is what SAP
+  sends; the data is right.
 
 ## Syncing with upstream
 
 ```sh
 git fetch upstream
 git rebase upstream/main patched
-go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/config/... ./internal/mcp/...
+go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/graph/... ./pkg/config/... ./internal/mcp/...
 git tag vX.Y.Z-patch.N && git push --force-with-lease origin patched --tags
 ```
 

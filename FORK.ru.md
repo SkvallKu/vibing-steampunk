@@ -6,7 +6,8 @@
 
 Форк [oisee/vibing-steampunk](https://github.com/oisee/vibing-steampunk), с которым
 `vsp` работает с SAP-системами, доступными **только по classic RFC через SAProuter**:
-без ADT/HTTPS-порта, без SAP NW RFC SDK и без pyrfc.
+без ADT/HTTPS-порта, без SAP NW RFC SDK и без pyrfc. Кроме того, в нём есть
+исправления для старых релизов (7.40, 7.50), на которых чтение в апстриме падает.
 
 Ветка `patched` — это `main` апстрима плюс коммиты ниже; при каждой синхронизации
 она ребейзится. Теги `vX.Y.Z-patch.N` показывают, на каком релизе апстрима основана сборка.
@@ -19,6 +20,17 @@
 | `fix(adt): tunnel the ordinary ADT client over RFC too` | С одним первым патчем маршрут использовала только явная `rfc`-поверхность; `pkg/adt.Client`, на котором построены `GetSource`, `GetClassInfo`, `SearchObject`, `Activate` и большинство инструментов, по-прежнему ходил по HTTP и падал по таймауту. Теперь при заданном `rfc_saprouter` ADT-клиент идёт через RFC-туннель (`SADT_REST_RFC_ENDPOINT`), CSRF на этом канале пропускается. Системы без роутера не затронуты. |
 | `feat(rfc): opt-in CpicStreaming` | Запись и проверка синтаксиса через туннель падали на телах больше ~28000 байт (`CPIC streaming is disabled…`). Ограничение — захардкоженный флаг клиента в `open-rfc-go`, а не SAP Basis. Добавлен `rfc_cpic_streaming` (по умолчанию выключен). Нужен [форк open-rfc-go](https://github.com/SkvallKu/open-rfc-go). |
 | `fix(adt): resolve package from object metadata` | Если quickSearch не вернул пакет объекта, пакет берётся из метаданных самого объекта, а не считается отсутствующим. |
+
+### Старые релизы (7.40, 7.50)
+
+Найдено на SAP_BASIS 740 SP06 и проверено на 750. Каждый коммит собирается и работает
+сам по себе, так что апстрим может принять любой из них отдельно.
+
+| Коммит | Что делает |
+|---|---|
+| `fix(adt): read classes right on 7.40, and GetClassInfo on every release` | На 7.40 object structure класса помечает метод как `CLAS/OO` (на 7.50+ — `CLAS/OM`), поэтому `GetSource … method=` и правка метода отвечали «method not found». `GetClassInfo` на любом релизе возвращал пустые методы и атрибуты, а у final-классов — `isFinal: false`; теперь он читает коды типов и атрибуты final/abstract из структуры, а суперкласс и интерфейсы — из исходника. |
+| `fix(adt): table queries on releases with the classic SQL parser` | До 7.40 SP08 нет freestyle SQL, а data preview разбирает классический Open SQL: падают `SELECT a, b` и `ORDER BY a, b`, а также длинный запрос с `IN ('A', 'B')`. В запросе расставляются пробелы после запятых и внутри скобок, а при ответе 400 — один повтор без запятых между колонками. `RunQuery` (а с ним `GetSystemInfo` и `vsp query`) при отсутствии freestyle выполняет SELECT по одной таблице через data preview. |
+| `feat(adt): GetTable and GetStructure answer from DD02L/DD03L` | Исходник DDIC-таблиц ADT отдаёт только с 7.52. При ответе 404 описание собирается из DD02L/DD02T/DD03L в форме DDL-исходника, а первая строка говорит, что оно сгенерировано. |
 
 ## Настройка
 
@@ -82,13 +94,16 @@ go work init ./vibing-steampunk ./open-rfc-go
 - ADT поверх RFC — stateless на каждый вызов; активация через туннель ограничена
   самим SAP, а не патчем.
 - `vsp compat` по-прежнему опрашивает HTTP-порты напрямую и зависает на RFC-only системах.
+- На 7.40 data preview не сообщает длину колонки и никогда не помечает ключевые поля,
+  поэтому `GetTableContents` показывает там `Length: 0` и `IsKey: false`. Так отвечает
+  SAP; сами данные верные.
 
 ## Синхронизация с апстримом
 
 ```sh
 git fetch upstream
 git rebase upstream/main patched
-go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/config/... ./internal/mcp/...
+go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/graph/... ./pkg/config/... ./internal/mcp/...
 git tag vX.Y.Z-patch.N && git push --force-with-lease origin patched --tags
 ```
 
