@@ -1268,12 +1268,21 @@ func (c *Client) GetTableContents(ctx context.Context, tableName string, maxRows
 
 	// Add SQL filter as request body if provided
 	if sqlFilter != "" {
+		sqlFilter = normalizeDataPreviewSQL(sqlFilter)
 		opts.Body = []byte(sqlFilter)
 		opts.ContentType = "text/plain"
 	}
 
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts)
 	if err != nil {
+		// The classic parser (7.40 SP06 and older) rejects what the new one
+		// takes; say it once more in its syntax. See datapreview_legacy.go.
+		if legacy, ok := legacyDataPreviewSQL(sqlFilter); ok && isBadRequest(err) {
+			opts.Body = []byte(legacy)
+			if resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts); err2 == nil {
+				return parseTableContents(resp2.Body)
+			}
+		}
 		return nil, fmt.Errorf("getting table contents: %w", err)
 	}
 
@@ -1306,6 +1315,18 @@ func (c *Client) RunQuery(ctx context.Context, sqlQuery string, maxRows int) (*T
 		ContentType: "text/plain",
 	})
 	if err != nil {
+		// Releases before 7.40 SP08 have no freestyle endpoint. A query on
+		// one table is something /datapreview/ddic can answer.
+		if isNotFound(err) {
+			if table := singleTableOf(sqlQuery); table != "" {
+				res, ferr := c.GetTableContents(ctx, table, maxRows, sqlQuery)
+				if ferr == nil {
+					return res, nil
+				}
+				return nil, fmt.Errorf("running query: no freestyle SQL on this system, and data preview of %s failed: %w", table, ferr)
+			}
+			return nil, fmt.Errorf("running query: no freestyle SQL on this system (older than 7.40 SP08?); only a SELECT on a single table can be answered, through GetTableContents: %w", err)
+		}
 		return nil, fmt.Errorf("running query: %w", err)
 	}
 
