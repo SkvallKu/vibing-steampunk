@@ -1,0 +1,43 @@
+name: Fork CI
+
+# ci.yml (upstream) only runs for main; this covers the fork's patched branch.
+# Kept as a separate file so upstream syncs never conflict on it.
+on:
+  push:
+    branches: [patched]
+  pull_request:
+    branches: [patched]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build · vet · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Cross-compile check
+        run: |
+          for target in linux/amd64 windows/amd64 darwin/arm64; do
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build ./... || exit 1
+          done
