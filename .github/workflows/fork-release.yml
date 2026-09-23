@@ -1,0 +1,44 @@
+name: Fork release
+
+# Builds release binaries for a fork tag, e.g. v2.58.0-patch.1.
+# upstream's release.yml is manual-only and pushes to main; do not run it here.
+on:
+  push:
+    tags: ['v*-patch.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          LDFLAGS="-s -w -X main.Version=$VERSION -X main.Commit=${GITHUB_SHA::7} -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 windows/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "$LDFLAGS" -o "dist/vsp-$os-$arch$ext" ./cmd/vsp
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Fork build on top of upstream ${GITHUB_REF_NAME%-patch.*}. See [FORK.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/FORK.md)."
