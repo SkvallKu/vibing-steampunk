@@ -365,6 +365,7 @@ func baseRFCInput(c *Config) (saprfc.Input, error) {
 			if sys.RFCSaprouter != "" {
 				in.RFCSaprouter = sys.RFCSaprouter
 			}
+			in.RFCCpicStreaming = sys.RFCCpicStreaming
 		}
 	}
 	return in, nil
