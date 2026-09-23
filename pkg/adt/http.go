@@ -112,6 +112,27 @@ type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// noCSRFDoer is an HTTPDoer whose channel has no CSRF concept to satisfy.
+// X-CSRF-Token is ICF's protection against a browser being tricked into
+// replaying a cookie-carried session from another page; classic RFC has
+// neither a cookie nor a browser in the loop; every call authenticates at
+// logon instead, so there is nothing for a token to prove. Fetching one there
+// does not degrade gracefully — pkg/saprfc.TunnelDoer's ADT-over-RFC tunnel
+// answers the fetch with a response that carries no token at all, which
+// otherwise surfaces as "fetching CSRF token: no CSRF token in response" on
+// every modifying (here: POST-shaped, not necessarily mutating — ADT's own
+// search/usageReferences endpoints are POST) request and blocks it outright.
+// Confirmed empirically 2026-09-14: /repository/informationsystem/
+// usageReferences over the RFC tunnel answers 200 with results and no token
+// at all, sent or received.
+//
+// This has been verified for a read-shaped POST, not for an actual object
+// mutation (create/update/delete/activate) — those are separately gated by
+// the safety layer (mutation_gate.go) before a request reaches here, so
+// skipping the fetch does not weaken --read-only; it is unverified whether a
+// real write also needs no token over this channel.
+type noCSRFDoer interface{ NoCSRF() bool }
+
 // Transport handles HTTP communication with SAP ADT REST API.
 // It manages CSRF tokens, sessions, and authentication automatically.
 type Transport struct {
@@ -271,8 +292,9 @@ func (t *Transport) request(ctx context.Context, path string, opts *RequestOptio
 	// Set default headers
 	t.setDefaultHeaders(req, opts)
 
-	// Add CSRF token for modifying requests
-	if isModifyingMethod(opts.Method) {
+	// Add CSRF token for modifying requests — skipped entirely on a channel
+	// with no CSRF concept (see noCSRFDoer).
+	if isModifyingMethod(opts.Method) && !t.skipsCSRF() {
 		token := t.getCSRFToken()
 		if token == "" {
 			// Fetch CSRF token first, on the same kind of session the request
@@ -323,7 +345,7 @@ func (t *Transport) request(ctx context.Context, path string, opts *RequestOptio
 	}
 
 	// Handle CSRF token refresh on 403
-	if resp.StatusCode == http.StatusForbidden && isModifyingMethod(opts.Method) {
+	if resp.StatusCode == http.StatusForbidden && isModifyingMethod(opts.Method) && !t.skipsCSRF() {
 		// Try to refresh CSRF token and retry once. The refresh has to stay on
 		// the request's own session kind: for a stateful write it lands between
 		// the failed attempt and the retry, and an unmarked probe there retires
@@ -355,7 +377,7 @@ func (t *Transport) request(ctx context.Context, path string, opts *RequestOptio
 		}
 
 		// Handle session timeout - refresh session and retry once
-		if apiErr.IsSessionExpired() {
+		if apiErr.IsSessionExpired() && !t.skipsCSRF() {
 			// Clear cached CSRF token and session ID
 			t.setCSRFToken("")
 			t.setSessionID("")
@@ -385,6 +407,11 @@ func (t *Transport) request(ctx context.Context, path string, opts *RequestOptio
 				if err := t.callReauthFunc(ctx); err != nil {
 					return nil, fmt.Errorf("re-authenticating after 401 on %s: %w (original error: %v)", path, err, apiErr)
 				}
+			} else if t.skipsCSRF() {
+				// No CSRF to refresh on this channel (see noCSRFDoer), and basic
+				// auth already went out on the request that got the 401 — a
+				// retry would just repeat it. Report the real error.
+				return nil, apiErr
 			} else {
 				// Basic auth: just refresh CSRF token.
 				if err := t.fetchCSRFTokenFor(ctx, opts.Stateful); err != nil {
@@ -810,6 +837,13 @@ func (t *Transport) setCSRFToken(token string) {
 	t.csrfMu.Lock()
 	defer t.csrfMu.Unlock()
 	t.csrfToken = token
+}
+
+// skipsCSRF reports whether this transport's channel has no CSRF concept to
+// satisfy — see noCSRFDoer.
+func (t *Transport) skipsCSRF() bool {
+	nc, ok := t.httpClient.(noCSRFDoer)
+	return ok && nc.NoCSRF()
 }
 
 // Session ID accessors with mutex protection

@@ -10,6 +10,7 @@ import (
 
 	"github.com/oisee/vibing-steampunk/pkg/adt"
 	"github.com/oisee/vibing-steampunk/pkg/config"
+	"github.com/oisee/vibing-steampunk/pkg/saprfc"
 	"github.com/spf13/cobra"
 )
 
@@ -69,6 +70,16 @@ type systemParams struct {
 
 	Cache     bool
 	CachePath string
+
+	// Classic RFC settings (see pkg/config.SystemConfig) — carried through so
+	// buildClient can route over RFC/SAProuter for systems with no reachable
+	// ADT HTTP port, the same way the MCP server does (internal/mcp/server.go).
+	RFCHost      string
+	RFCSysnr     string
+	RFCPort      int
+	RFCUser      string
+	RFCPassword  string
+	RFCSaprouter string
 }
 
 // resolveSystemParams resolves system parameters from --system flag or env vars.
@@ -142,6 +153,13 @@ func resolveSystemParams(cmd *cobra.Command) (*systemParams, error) {
 			BlockFreeSQL:            sys.BlockFreeSQL || envFlag("SAP_BLOCK_FREE_SQL"),
 			Cache:                   sys.Cache,
 			CachePath:               sys.CachePath,
+
+			RFCHost:      sys.RFCHost,
+			RFCSysnr:     sys.RFCSysnr,
+			RFCPort:      sys.RFCPort,
+			RFCUser:      sys.RFCUser,
+			RFCPassword:  sys.RFCPassword,
+			RFCSaprouter: sys.RFCSaprouter,
 		}, nil
 	}
 
@@ -175,6 +193,7 @@ func resolveSystemParams(cmd *cobra.Command) (*systemParams, error) {
 		AllowedPackages:    splitList(os.Getenv("SAP_ALLOWED_PACKAGES")),
 		Cache:              cacheEnabled,
 		CachePath:          cachePath,
+		RFCSaprouter:       strings.TrimSpace(os.Getenv("SAP_SAPROUTER")),
 	}, nil
 }
 
@@ -348,7 +367,36 @@ func buildClient(params *systemParams) (*adt.Client, error) {
 		return adt.NewClient(params.URL, "", "", opts...), nil
 	}
 
+	if dest, ok := rfcTunnelDest(params); ok {
+		return saprfc.NewTunneledADTClient(params.URL, params.User, params.Password, dest, opts...), nil
+	}
 	return adt.NewClient(params.URL, params.User, params.Password, opts...), nil
+}
+
+// rfcTunnelDest reports whether this system requires a SAProuter hop — the
+// signal (rfc_saprouter set) that its ADT HTTP port is not reachable at all,
+// so the ordinary client must tunnel over RFC instead of trying HTTP and
+// hanging until the context deadline. Mirrors rfcTunnelDest in
+// internal/mcp/handlers_rfc.go for the MCP server side of the same system.
+func rfcTunnelDest(params *systemParams) (saprfc.Params, bool) {
+	in := saprfc.Input{
+		URL:          params.URL,
+		User:         params.User,
+		Password:     params.Password,
+		Client:       params.Client,
+		Language:     params.Language,
+		RFCHost:      params.RFCHost,
+		RFCSysnr:     params.RFCSysnr,
+		RFCPort:      params.RFCPort,
+		RFCUser:      params.RFCUser,
+		RFCPassword:  params.RFCPassword,
+		RFCSaprouter: params.RFCSaprouter,
+	}
+	if in.RFCSaprouter == "" {
+		in.RFCSaprouter = strings.TrimSpace(os.Getenv("SAP_SAPROUTER"))
+	}
+	dest, err := saprfc.Resolve(in)
+	return dest, err == nil && dest.Router != ""
 }
 
 // systemCookies returns the browser session a system authenticates with, if it

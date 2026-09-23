@@ -236,15 +236,21 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 	return c, nil
 }
 
-// rfcDestination resolves where an RFC call goes: this server's system, the RFC
-// settings of the default .vsp.json system, and any per-call override.
-func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
+// baseRFCInput builds the RFC destination fields common to every RFC-routed
+// call on this server: this system's declared connection plus the RFC
+// environment (SAP_USER/SAP_PASSWORD/SAP_SAPROUTER) and, for the fields flags
+// never carry (RFCHost/RFCSysnr/RFCPort), the default .vsp.json system.
+//
+// Shared by rfcDestination (adds per-call flag overrides, for the explicit RFC
+// action) and rfcTunnelDest (no overrides — decides how the *ordinary* ADT
+// client for this server should be built, before a Server exists to ask).
+func baseRFCInput(cfg *Config) saprfc.Input {
 	in := saprfc.Input{
-		URL:          s.config.BaseURL,
-		User:         s.config.Username,
-		Password:     s.config.Password,
-		Client:       s.config.Client,
-		Language:     s.config.Language,
+		URL:          cfg.BaseURL,
+		User:         cfg.Username,
+		Password:     cfg.Password,
+		Client:       cfg.Client,
+		Language:     cfg.Language,
 		RFCUser:      os.Getenv("SAP_USER"),
 		RFCSaprouter: os.Getenv("SAP_SAPROUTER"),
 	}
@@ -252,8 +258,8 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 		in.RFCPassword = pwd
 	}
 	// Per-system RFC settings from the default .vsp.json system, when present.
-	if cfg, _, err := config.LoadSystems(); err == nil && cfg != nil && cfg.Default != "" {
-		if sys, err := cfg.GetSystem(cfg.Default); err == nil {
+	if sc, _, err := config.LoadSystems(); err == nil && sc != nil && sc.Default != "" {
+		if sys, err := sc.GetSystem(sc.Default); err == nil {
 			in.RFCHost, in.RFCSysnr, in.RFCPort = sys.RFCHost, sys.RFCSysnr, sys.RFCPort
 			if sys.RFCUser != "" {
 				in.RFCUser = sys.RFCUser
@@ -266,6 +272,13 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 			}
 		}
 	}
+	return in
+}
+
+// rfcDestination resolves where an RFC call goes: this server's system, the RFC
+// settings of the default .vsp.json system, and any per-call override.
+func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
+	in := baseRFCInput(s.config)
 	in.HostFlag = getStringParam(params, "host")
 	in.SysnrFlag = getStringParam(params, "sysnr")
 	in.UserFlag = getStringParam(params, "user")
@@ -273,6 +286,16 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	in.SaprouterFlag = getStringParam(params, "saprouter")
 
 	return saprfc.Resolve(in)
+}
+
+// rfcTunnelDest reports whether this server's system requires a SAProuter hop
+// — the signal (set explicitly via rfc_saprouter) that its ADT HTTP port is
+// not reachable at all, so the *ordinary* ADT client (GetSource, GetClassInfo,
+// SearchObject, every focused-mode tool) must tunnel over RFC too, instead of
+// attempting HTTP and hanging until the context deadline. See NewServer.
+func rfcTunnelDest(cfg *Config) (saprfc.Params, bool) {
+	dest, err := saprfc.Resolve(baseRFCInput(cfg))
+	return dest, err == nil && dest.Router != ""
 }
 
 func rfcResult(v any) (*mcp.CallToolResult, bool, error) {

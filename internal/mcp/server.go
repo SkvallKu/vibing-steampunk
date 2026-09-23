@@ -18,6 +18,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	openrfc "github.com/oisee/open-rfc-go/rfc"
 	"github.com/oisee/vibing-steampunk/pkg/adt"
+	"github.com/oisee/vibing-steampunk/pkg/saprfc"
 )
 
 // AsyncTask represents a background task status.
@@ -219,7 +220,15 @@ func NewServer(cfg *Config) *Server {
 		}
 	}
 
-	adtClient := adt.NewClient(cfg.BaseURL, cfg.Username, cfg.Password, opts...)
+	var adtClient *adt.Client
+	if dest, ok := rfcTunnelDest(cfg); ok {
+		if cfg.Verbose {
+			fmt.Fprintf(os.Stderr, "[INFO] %s has no direct ADT/HTTP path (rfc_saprouter set) — routing every ADT call over RFC through %s\n", cfg.BaseURL, dest.Host)
+		}
+		adtClient = saprfc.NewTunneledADTClient(cfg.BaseURL, cfg.Username, cfg.Password, dest, opts...)
+	} else {
+		adtClient = adt.NewClient(cfg.BaseURL, cfg.Username, cfg.Password, opts...)
+	}
 	return NewServerWithClient(cfg, adtClient)
 }
 
