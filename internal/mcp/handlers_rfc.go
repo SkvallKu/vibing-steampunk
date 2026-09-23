@@ -322,35 +322,39 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 	return c, nil
 }
 
-// rfcDestination resolves where an RFC call goes: this server's system, the RFC
-// settings of its .vsp.json entry, and any per-call override.
-func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
-	// The RFC logon defaults to this server's own logon. SAP_USER/SAP_PASSWORD
-	// are consulted only for a server without one (cookie or SSO logon), and
-	// only when SAP_URL and SAP_CLIENT name this very system: a .env in the
-	// working directory usually holds one system's, and every server loads
-	// it, so a server connected to another system would otherwise log on over
-	// RFC as that system's user.
+// baseRFCInput builds the RFC destination fields common to every RFC-routed
+// call on this server: this system's own logon, the RFC settings of its
+// .vsp.json entry, and SAP_SAPROUTER. Shared by rfcDestination (which adds the
+// per-call overrides of the rfc action) and rfcTunnelDest (no overrides: it
+// decides how the ordinary ADT client is built, before a Server exists).
+//
+// The RFC logon defaults to this server's own logon. SAP_USER/SAP_PASSWORD
+// are consulted only for a server without one (cookie or SSO logon), and
+// only when SAP_URL and SAP_CLIENT name this very system: a .env in the
+// working directory usually holds one system's, and every server loads
+// it, so a server connected to another system would otherwise log on over
+// RFC as that system's user.
+func baseRFCInput(c *Config) (saprfc.Input, error) {
 	in := saprfc.Input{
-		URL:          s.config.BaseURL,
-		User:         s.config.Username,
-		Password:     s.config.Password,
-		Client:       s.config.Client,
-		Language:     s.config.Language,
+		URL:          c.BaseURL,
+		User:         c.Username,
+		Password:     c.Password,
+		Client:       c.Client,
+		Language:     c.Language,
 		RFCSaprouter: os.Getenv("SAP_SAPROUTER"),
 
 		TransportCmd: len(s.config.TransportCmd) > 0,
 	}
-	if in.User == "" && sameSystem(os.Getenv("SAP_URL"), os.Getenv("SAP_CLIENT"), s.config.BaseURL, s.config.Client) {
+	if in.User == "" && sameSystem(os.Getenv("SAP_URL"), os.Getenv("SAP_CLIENT"), c.BaseURL, c.Client) {
 		in.User, in.Password = os.Getenv("SAP_USER"), os.Getenv("SAP_PASSWORD")
 	}
 	// Per-system RFC settings of this server's own .vsp.json system. Taking the
 	// default system's instead sent every other server to the default system's
 	// gateway, with the default system's RFC credentials.
 	if cfg, _, err := config.LoadSystems(); err == nil && cfg != nil {
-		name, sys, ok, oerr := s.ownSystem(cfg)
+		name, sys, ok, oerr := ownSystemOf(c, cfg)
 		if oerr != nil {
-			return saprfc.Params{}, oerr
+			return saprfc.Input{}, oerr
 		}
 		if ok {
 			in.RFCHost, in.RFCSysnr, in.RFCPort = sys.RFCHost, sys.RFCSysnr, sys.RFCPort
@@ -364,6 +368,30 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 				in.RFCSaprouter = sys.RFCSaprouter
 			}
 		}
+	}
+	return in, nil
+}
+
+// rfcTunnelDest reports whether this server's system requires a SAProuter hop
+// -- the signal (rfc_saprouter set) that its ADT HTTP port is not reachable at
+// all, so the ordinary ADT client (GetSource, GetClassInfo, SearchObject, every
+// focused-mode tool) must tunnel over RFC too instead of attempting HTTP and
+// hanging until the context deadline. See NewServer.
+func rfcTunnelDest(c *Config) (saprfc.Params, bool) {
+	in, err := baseRFCInput(c)
+	if err != nil {
+		return saprfc.Params{}, false
+	}
+	dest, err := saprfc.Resolve(in)
+	return dest, err == nil && dest.Router != ""
+}
+
+// rfcDestination resolves where an RFC call goes: this server's system, the RFC
+// settings of its .vsp.json entry, and any per-call override.
+func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
+	in, err := baseRFCInput(s.config)
+	if err != nil {
+		return saprfc.Params{}, err
 	}
 	in.HostFlag = getStringParam(params, "host")
 	in.SysnrFlag = getStringParam(params, "sysnr")
@@ -470,19 +498,24 @@ func firstNonEmptyStr(vals ...string) string {
 // is an error, not a choice between the two: its gateway and RFC credentials
 // would otherwise be used for, or carry this server's logon to, the wrong one.
 func (s *Server) ownSystem(cfg *config.SystemsConfig) (string, config.SystemConfig, bool, error) {
-	if s.config.SystemName != "" {
-		sys, ok := cfg.Systems[s.config.SystemName]
+	return ownSystemOf(s.config, cfg)
+}
+
+// ownSystemOf is ownSystem for a server's Config, before the Server exists.
+func ownSystemOf(c *Config, cfg *config.SystemsConfig) (string, config.SystemConfig, bool, error) {
+	if c.SystemName != "" {
+		sys, ok := cfg.Systems[c.SystemName]
 		if !ok {
 			return "", config.SystemConfig{}, false, nil
 		}
-		if err := NamedSystemMismatch(s.config.SystemName, sys, s.config.BaseURL, s.config.Client); err != nil {
+		if err := NamedSystemMismatch(c.SystemName, sys, c.BaseURL, c.Client); err != nil {
 			return "", config.SystemConfig{}, false, err
 		}
-		return s.config.SystemName, sys, true, nil
+		return c.SystemName, sys, true, nil
 	}
 	found, matches := "", 0
 	for name, sys := range cfg.Systems {
-		if sys.URL == "" || !sameSystem(sys.URL, sys.Client, s.config.BaseURL, s.config.Client) {
+		if sys.URL == "" || !sameSystem(sys.URL, sys.Client, c.BaseURL, c.Client) {
 			continue
 		}
 		found, matches = name, matches+1
