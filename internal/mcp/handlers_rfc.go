@@ -343,7 +343,7 @@ func baseRFCInput(c *Config) (saprfc.Input, error) {
 		Language:     c.Language,
 		RFCSaprouter: os.Getenv("SAP_SAPROUTER"),
 
-		TransportCmd: len(s.config.TransportCmd) > 0,
+		TransportCmd: len(c.TransportCmd) > 0,
 	}
 	if in.User == "" && sameSystem(os.Getenv("SAP_URL"), os.Getenv("SAP_CLIENT"), c.BaseURL, c.Client) {
 		in.User, in.Password = os.Getenv("SAP_USER"), os.Getenv("SAP_PASSWORD")
@@ -367,6 +367,7 @@ func baseRFCInput(c *Config) (saprfc.Input, error) {
 			if sys.RFCSaprouter != "" {
 				in.RFCSaprouter = sys.RFCSaprouter
 			}
+			in.RFCCpicStreaming = sys.RFCCpicStreaming
 		}
 	}
 	return in, nil

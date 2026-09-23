@@ -89,12 +89,13 @@ type systemParams struct {
 	// Classic RFC settings (see pkg/config.SystemConfig) — carried through so
 	// buildClient can route over RFC/SAProuter for systems with no reachable
 	// ADT HTTP port, the same way the MCP server does (internal/mcp/server.go).
-	RFCHost      string
-	RFCSysnr     string
-	RFCPort      int
-	RFCUser      string
-	RFCPassword  string
-	RFCSaprouter string
+	RFCHost          string
+	RFCSysnr         string
+	RFCPort          int
+	RFCUser          string
+	RFCPassword      string
+	RFCSaprouter     string
+	RFCCpicStreaming bool
 }
 
 // resolveSystemParams resolves system parameters from --system flag or env vars.
@@ -185,12 +186,13 @@ func resolveSystemParams(cmd *cobra.Command) (*systemParams, error) {
 			Expect:                  expect,
 			ExpectSource:            expectSource,
 
-			RFCHost:      sys.RFCHost,
-			RFCSysnr:     sys.RFCSysnr,
-			RFCPort:      sys.RFCPort,
-			RFCUser:      sys.RFCUser,
-			RFCPassword:  sys.RFCPassword,
-			RFCSaprouter: sys.RFCSaprouter,
+			RFCHost:          sys.RFCHost,
+			RFCSysnr:         sys.RFCSysnr,
+			RFCPort:          sys.RFCPort,
+			RFCUser:          sys.RFCUser,
+			RFCPassword:      sys.RFCPassword,
+			RFCSaprouter:     sys.RFCSaprouter,
+			RFCCpicStreaming: sys.RFCCpicStreaming,
 		}, nil
 	}
 
@@ -519,17 +521,18 @@ func buildClient(params *systemParams) (*adt.Client, error) {
 // internal/mcp/handlers_rfc.go for the MCP server side of the same system.
 func rfcTunnelDest(params *systemParams) (saprfc.Params, bool) {
 	in := saprfc.Input{
-		URL:          params.URL,
-		User:         params.User,
-		Password:     params.Password,
-		Client:       params.Client,
-		Language:     params.Language,
-		RFCHost:      params.RFCHost,
-		RFCSysnr:     params.RFCSysnr,
-		RFCPort:      params.RFCPort,
-		RFCUser:      params.RFCUser,
-		RFCPassword:  params.RFCPassword,
-		RFCSaprouter: params.RFCSaprouter,
+		URL:              params.URL,
+		User:             params.User,
+		Password:         params.Password,
+		Client:           params.Client,
+		Language:         params.Language,
+		RFCHost:          params.RFCHost,
+		RFCSysnr:         params.RFCSysnr,
+		RFCPort:          params.RFCPort,
+		RFCUser:          params.RFCUser,
+		RFCPassword:      params.RFCPassword,
+		RFCSaprouter:     params.RFCSaprouter,
+		RFCCpicStreaming: params.RFCCpicStreaming,
 	}
 	if in.RFCSaprouter == "" {
 		in.RFCSaprouter = strings.TrimSpace(os.Getenv("SAP_SAPROUTER"))
