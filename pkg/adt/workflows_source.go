@@ -1616,6 +1616,15 @@ type ClassInfo struct {
 	IsFinal      bool     `json:"isFinal"`
 }
 
+var classInterfacesRe = regexp.MustCompile(`(?im)^\s*INTERFACES\s+([\w/]+)`)
+
+// classDefinitionPart returns the class's own CLASS ... DEFINITION section,
+// up to its ENDCLASS, or "" when the source has none.
+func classDefinitionPart(source, className string) string {
+	re := regexp.MustCompile(`(?ims)^\s*CLASS\s+` + regexp.QuoteMeta(className) + `\s+DEFINITION\b.*?^\s*ENDCLASS\s*\.`)
+	return re.FindString(source)
+}
+
 // GetClassInfo retrieves class metadata without full source code.
 // Uses GetObjectStructure for quick metadata extraction.
 func (c *Client) GetClassInfo(ctx context.Context, className string) (*ClassInfo, error) {
@@ -1626,8 +1635,9 @@ func (c *Client) GetClassInfo(ctx context.Context, className string) (*ClassInfo
 
 	className = strings.ToUpper(className)
 
-	// Get object structure
-	structure, err := c.GetObjectStructureCAI(ctx, className, 100)
+	// The class's object structure lists its components by ADT type code
+	// and carries final/abstract on the root element.
+	structure, err := c.GetClassObjectStructure(ctx, className)
 	if err != nil {
 		return nil, fmt.Errorf("getting class structure: %w", err)
 	}
@@ -1639,64 +1649,55 @@ func (c *Client) GetClassInfo(ctx context.Context, className string) (*ClassInfo
 		Interfaces: make([]string, 0),
 	}
 
-	// Parse root node
 	if structure != nil {
-		info.Description = structure.Description
-
-		// Recursive function to extract info from tree
-		var extractInfo func(node *ObjectExplorerNode)
-		extractInfo = func(node *ObjectExplorerNode) {
-			nodeType := strings.ToUpper(node.Type)
-			nodeName := node.Name
-
+		info.IsFinal = structure.Final
+		info.IsAbstract = structure.Abstract
+		for _, el := range structure.Elements {
 			switch {
-			case strings.Contains(nodeType, "METHOD"):
-				info.Methods = append(info.Methods, nodeName)
-			case strings.Contains(nodeType, "ATTR"):
-				info.Attributes = append(info.Attributes, nodeName)
-			case strings.Contains(nodeType, "INTF"):
-				info.Interfaces = append(info.Interfaces, nodeName)
-			case strings.Contains(nodeType, "TEST"):
-				info.HasTestClass = true
-			}
-
-			// Check for superclass in description
-			if strings.Contains(strings.ToUpper(node.Description), "INHERITING") {
-				parts := strings.Fields(node.Description)
-				for i, p := range parts {
-					if strings.ToUpper(p) == "FROM" && i+1 < len(parts) {
-						info.Superclass = parts[i+1]
-					}
-				}
-			}
-
-			// Recurse into children
-			for i := range node.Children {
-				extractInfo(&node.Children[i])
+			case IsClassMethodType(el.Type):
+				info.Methods = append(info.Methods, el.Name)
+			case el.Type == "CLAS/OA":
+				info.Attributes = append(info.Attributes, el.Name)
 			}
 		}
-
-		extractInfo(structure)
 	}
 
-	// Check for abstract/final in main source (quick scan)
+	// Superclass and interfaces are only in the source. Its header also
+	// answers final/abstract when the structure did not.
 	source, err := c.GetClassSource(ctx, className)
 	if err == nil {
-		sourceUpper := strings.ToUpper(source)
-		if strings.Contains(sourceUpper, "CLASS "+className+" DEFINITION ABSTRACT") ||
-			strings.Contains(sourceUpper, "ABSTRACT DEFINITION") {
-			info.IsAbstract = true
-			info.Category = "Abstract"
+		def := classDefinitionPart(source, className)
+		header := def
+		if i := strings.IndexByte(header, '.'); i >= 0 {
+			header = header[:i]
 		}
-		if strings.Contains(sourceUpper, "CLASS "+className+" DEFINITION FINAL") ||
-			strings.Contains(sourceUpper, "FINAL DEFINITION") {
-			info.IsFinal = true
-			info.Category = "Final"
+		words := strings.Fields(strings.ToUpper(header))
+		for i, w := range words {
+			switch w {
+			case "FINAL":
+				info.IsFinal = true
+			case "ABSTRACT":
+				info.IsAbstract = true
+			case "FROM":
+				if i > 0 && words[i-1] == "INHERITING" && i+1 < len(words) {
+					info.Superclass = words[i+1]
+				}
+			}
 		}
-		if info.Category == "" {
-			info.Category = "Regular"
+		for _, m := range classInterfacesRe.FindAllStringSubmatch(def, -1) {
+			info.Interfaces = append(info.Interfaces, strings.ToUpper(m[1]))
 		}
+	}
+	switch {
+	case info.IsAbstract:
+		info.Category = "Abstract"
+	case info.IsFinal:
+		info.Category = "Final"
+	default:
+		info.Category = "Regular"
+	}
 
+	if err == nil {
 		// Extract package from source header if present
 		lines := strings.Split(source, "\n")
 		for _, line := range lines[:min(20, len(lines))] {

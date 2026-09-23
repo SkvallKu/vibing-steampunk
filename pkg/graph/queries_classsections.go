@@ -12,7 +12,7 @@ type ClassMember struct {
 	Kind       string `json:"kind"`       // method, attribute, type, event
 	Visibility string `json:"visibility"` // public, protected, private
 	Level      string `json:"level"`      // instance, static
-	ADTType    string `json:"adt_type"`   // CLAS/OM, CLAS/OA, CLAS/OT, CLAS/OO
+	ADTType    string `json:"adt_type"`   // CLAS/OM, CLAS/OO, CLAS/OA, CLAS/OT, CLAS/OE
 }
 
 // ClassSection groups members by visibility.
@@ -42,7 +42,7 @@ type ClassSectionsSummary struct {
 // Maps to ClassObjectStructureElement fields.
 type ClassStructureElement struct {
 	Name       string // METHOD_NAME, MV_ATTRIBUTE, etc.
-	ADTType    string // CLAS/OM (method), CLAS/OA (attribute), CLAS/OT (type), CLAS/OO (event)
+	ADTType    string // CLAS/OM or CLAS/OO (method), CLAS/OA (attribute), CLAS/OT (type), CLAS/OE (event)
 	Visibility string // public, protected, private
 	Level      string // instance, static
 }
@@ -178,13 +178,13 @@ func FormatClassSections(r *ClassSectionsResult) string {
 // classifyMemberKind maps ADT type codes to member kinds.
 func classifyMemberKind(adtType string) string {
 	switch adtType {
-	case "CLAS/OM":
+	case "CLAS/OM", "CLAS/OO": // CLAS/OO is a method before 7.50
 		return "method"
 	case "CLAS/OA":
 		return "attribute"
 	case "CLAS/OT":
 		return "type"
-	case "CLAS/OO":
+	case "CLAS/OE":
 		return "event"
 	default:
 		return "unknown"

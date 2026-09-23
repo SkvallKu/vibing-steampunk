@@ -14,7 +14,7 @@ func TestClassifySections_Basic(t *testing.T) {
 		{Name: "HELPER", ADTType: "CLAS/OM", Visibility: "private", Level: "instance"},
 		{Name: "MV_DATA", ADTType: "CLAS/OA", Visibility: "private", Level: "instance"},
 		{Name: "TY_DATA", ADTType: "CLAS/OT", Visibility: "public", Level: ""},
-		{Name: "CHANGED", ADTType: "CLAS/OO", Visibility: "public", Level: "instance"},
+		{Name: "CHANGED", ADTType: "CLAS/OE", Visibility: "public", Level: "instance"},
 	}
 
 	result := ClassifySections("ZCL_TEST", elements)

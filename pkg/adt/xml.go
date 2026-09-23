@@ -185,6 +185,8 @@ type ClassObjectStructure struct {
 	XMLName  xml.Name                      `xml:"objectStructureElement"`
 	Name     string                        `xml:"name,attr"`
 	Type     string                        `xml:"type,attr"`
+	Final    bool                          `xml:"final,attr"`
+	Abstract bool                          `xml:"abstract,attr"`
 	Elements []ClassObjectStructureElement `xml:"objectStructureElement"`
 	Links    []ClassObjectStructureLink    `xml:"link"`
 }
@@ -192,7 +194,7 @@ type ClassObjectStructure struct {
 // ClassObjectStructureElement represents an element (method, attribute, type) in the class structure.
 type ClassObjectStructureElement struct {
 	Name       string                     `xml:"name,attr"`
-	Type       string                     `xml:"type,attr"` // CLAS/OM for method, CLAS/OA for attribute, CLAS/OT for type
+	Type       string                     `xml:"type,attr"` // CLAS/OM (CLAS/OO before 7.50) for method, CLAS/OA for attribute, CLAS/OT for type, CLAS/OE for event
 	ClifName   string                     `xml:"clif_name,attr,omitempty"`
 	Level      string                     `xml:"level,attr,omitempty"`      // instance or static
 	Visibility string                     `xml:"visibility,attr,omitempty"` // public, protected, private
@@ -231,8 +233,8 @@ func (c *ClassObjectStructure) GetMethods() []MethodInfo {
 	var methods []MethodInfo
 
 	for _, elem := range c.Elements {
-		// Only process methods (type CLAS/OM)
-		if elem.Type != "CLAS/OM" {
+		// Only process methods
+		if !IsClassMethodType(elem.Type) {
 			continue
 		}
 
@@ -256,6 +258,13 @@ func (c *ClassObjectStructure) GetMethods() []MethodInfo {
 	}
 
 	return methods
+}
+
+// IsClassMethodType reports whether an object structure element is a method.
+// 7.50 and later say CLAS/OM; 7.40 says CLAS/OO for the same element, and
+// has no other use for it (events are CLAS/OE on both).
+func IsClassMethodType(t string) bool {
+	return t == "CLAS/OM" || t == "CLAS/OO"
 }
 
 // parseSourceRange parses a source range from an ADT href.
