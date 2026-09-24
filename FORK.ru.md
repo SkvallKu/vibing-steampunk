@@ -20,6 +20,7 @@
 | `fix(adt): tunnel the ordinary ADT client over RFC too` | С одним первым патчем маршрут использовала только явная `rfc`-поверхность; `pkg/adt.Client`, на котором построены `GetSource`, `GetClassInfo`, `SearchObject`, `Activate` и большинство инструментов, по-прежнему ходил по HTTP и падал по таймауту. Теперь при заданном `rfc_saprouter` ADT-клиент идёт через RFC-туннель (`SADT_REST_RFC_ENDPOINT`), CSRF на этом канале пропускается. Системы без роутера не затронуты. |
 | `feat(rfc): opt-in CpicStreaming` | Запись и проверка синтаксиса через туннель падали на телах больше ~28000 байт (`CPIC streaming is disabled…`). Ограничение — захардкоженный флаг клиента в `open-rfc-go`, а не SAP Basis. Добавлен `rfc_cpic_streaming` (по умолчанию выключен). Нужен [форк open-rfc-go](https://github.com/SkvallKu/open-rfc-go). |
 | `fix(adt): resolve package from object metadata` | Если quickSearch не вернул пакет объекта, пакет берётся из метаданных самого объекта, а не считается отсутствующим. |
+| `feat(mcp): start the server for a .vsp.json system with -s` | Сервер игнорировал `-s`: RFC-туннель брал хост из системы `default`, а логин — из `SAP_USER`/`SAP_PASSWORD`, поэтому в одном проекте нельзя было поднять серверы на несколько систем или мандантов. Теперь `vsp -s <имя>` берёт подключение из этой системы. Включается явно: без `-s` ничего не меняется. |
 
 ### Старые релизы (7.40, 7.50)
 
@@ -59,10 +60,33 @@
 Строка маршрута приводится к виду `/H/…/H/`, который ждёт `open-rfc-go`:
 `/H/router/S/3299` → `/H/router/S/3299/H/`; пустой маршрут — прямое соединение.
 
-**MCP:** задайте `SAP_SAPROUTER` (и `SAP_PASSWORD`) в `env` сервера в `.mcp.json`.
+**MCP, одна система:** задайте `SAP_SAPROUTER` (и `SAP_PASSWORD`) в `env` сервера в `.mcp.json`.
 RFC-туннель берёт `rfc_host`/`rfc_sysnr` из системы `default` в `.vsp.json` рабочей
 папки сервера, поэтому держите по одному `.vsp.json` на папку проекта, с `default`
 на эту систему.
+
+**MCP, несколько систем или мандантов:** запускайте каждый сервер с `-s <имя>`. Сервер
+берёт URL, мандант, язык, пользователя, `rfc_*` и маршрут из этой системы, пароль — из
+`VSP_<ИМЯ>_PASSWORD` (RFC: `rfc_user`, `VSP_<ИМЯ>_RFC_PASSWORD`, иначе тот же логин).
+`SAP_USER`, `SAP_PASSWORD`, `SAP_SAPROUTER` и система `default` для подключения не
+используются: обычно они относятся к другой системе, поэтому при нехватке настройки сервер
+не стартует, а не входит под ними.
+
+- Приоритет: флаги командной строки > система > переменные `SAP_*` и `.env`.
+- Настройки безопасности системы только сужают флаги: `read_only`, `block_free_sql`,
+  `transport_read_only` добавляются; `allowed_packages`/`allowed_transports` действуют,
+  если флага нет, а список во флаге должен укладываться в список системы.
+  `enable_transports` и `allow_transportable_edits` — только флагами.
+- Системы с SSO и cookie с `-s` пока не поддерживаются (задавайте флагами).
+
+```jsonc
+// .mcp.json — без секретов; пароли — VSP_DEV_PASSWORD / VSP_DATA_PASSWORD в .env
+{ "mcpServers": {
+  "vsp":      { "command": "vsp", "args": ["-s", "DEV", "--mode", "focused", "--allowed-packages", "$TMP"] },
+  "vsp-data": { "command": "vsp", "args": ["-s", "DATA", "--mode", "focused", "--read-only",
+                                           "--transport-read-only", "--disabled-groups", "RTDHXIGC"] }
+} }
+```
 
 ```sh
 vsp -s prod rfc info --verbose

@@ -240,11 +240,16 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 // call on this server: this system's declared connection plus the RFC
 // environment (SAP_USER/SAP_PASSWORD/SAP_SAPROUTER) and, for the fields flags
 // never carry (RFCHost/RFCSysnr/RFCPort), the default .vsp.json system.
+// A server started with -s takes all of it from that system instead (see
+// systemRFCInput).
 //
 // Shared by rfcDestination (adds per-call flag overrides, for the explicit RFC
 // action) and rfcTunnelDest (no overrides — decides how the *ordinary* ADT
 // client for this server should be built, before a Server exists to ask).
 func baseRFCInput(cfg *Config) saprfc.Input {
+	if cfg.System != nil {
+		return systemRFCInput(cfg)
+	}
 	in := saprfc.Input{
 		URL:          cfg.BaseURL,
 		User:         cfg.Username,
@@ -274,6 +279,28 @@ func baseRFCInput(cfg *Config) saprfc.Input {
 		}
 	}
 	return in
+}
+
+// systemRFCInput is baseRFCInput for a server started with -s. Host, route and
+// RFC logon come from that system only; the RFC logon falls back to the
+// server's own user and password (which came from the same system), never to
+// SAP_USER/SAP_PASSWORD or to the default system.
+func systemRFCInput(cfg *Config) saprfc.Input {
+	sys := cfg.System
+	return saprfc.Input{
+		URL:              cfg.BaseURL,
+		User:             cfg.Username,
+		Password:         cfg.Password,
+		Client:           cfg.Client,
+		Language:         cfg.Language,
+		RFCHost:          sys.RFCHost,
+		RFCSysnr:         sys.RFCSysnr,
+		RFCPort:          sys.RFCPort,
+		RFCUser:          sys.RFCUser,
+		RFCPassword:      sys.RFCPassword,
+		RFCSaprouter:     sys.RFCSaprouter,
+		RFCCpicStreaming: sys.RFCCpicStreaming,
+	}
 }
 
 // rfcDestination resolves where an RFC call goes: this server's system, the RFC

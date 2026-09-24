@@ -18,6 +18,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	openrfc "github.com/oisee/open-rfc-go/rfc"
 	"github.com/oisee/vibing-steampunk/pkg/adt"
+	"github.com/oisee/vibing-steampunk/pkg/config"
 	"github.com/oisee/vibing-steampunk/pkg/saprfc"
 )
 
@@ -135,6 +136,12 @@ type Config struct {
 	Transport string
 	// HTTP address for Streamable HTTP transport (default: ":8080")
 	HTTPAddr string
+
+	// System is the .vsp.json system this server was started for with -s,
+	// resolved by config.GetServerSystem. Nil keeps the behaviour of a server
+	// started without -s: the RFC tunnel takes its host from the default
+	// system and its credentials from SAP_USER/SAP_PASSWORD.
+	System *config.SystemConfig
 
 	// Granular tool visibility (from .vsp.json)
 	// Key: tool name, Value: true=enabled, false=disabled

@@ -183,6 +183,37 @@ func LoadSystemsFromFile(path string) (*SystemsConfig, error) {
 
 // GetSystem retrieves a system configuration by name, resolving password from env.
 func (c *SystemsConfig) GetSystem(name string) (*SystemConfig, error) {
+	sys, err := c.lookupSystem(name)
+	if err != nil {
+		return nil, err
+	}
+	resolveSystemEnv(name, sys)
+	resolveSharedSAPEnv(sys)
+	applySystemDefaults(name, sys)
+	return sys, nil
+}
+
+// GetServerSystem retrieves a system for an MCP server started with -s <name>.
+//
+// It differs from GetSystem in one respect: it never falls back to the shared
+// SAP_USER, SAP_PASSWORD and SAP_SAPROUTER variables. Those usually belong to
+// another system (the one in .env, which vsp loads for every process started in
+// that directory), and a server started for this system must not log on to it,
+// or route through its router, when this system's own settings are missing.
+// Only the per-system variables (VSP_<NAME>_...) and the file itself count.
+func (c *SystemsConfig) GetServerSystem(name string) (*SystemConfig, error) {
+	sys, err := c.lookupSystem(name)
+	if err != nil {
+		return nil, err
+	}
+	resolveSystemEnv(name, sys)
+	applySystemDefaults(name, sys)
+	return sys, nil
+}
+
+// lookupSystem returns a copy of the named system, so resolving it never
+// changes the loaded configuration.
+func (c *SystemsConfig) lookupSystem(name string) (*SystemConfig, error) {
 	sys, ok := c.Systems[name]
 	if !ok {
 		// List available systems in error
@@ -192,38 +223,63 @@ func (c *SystemsConfig) GetSystem(name string) (*SystemConfig, error) {
 		}
 		return nil, fmt.Errorf("system '%s' not found. Available: %s", name, strings.Join(available, ", "))
 	}
+	return &sys, nil
+}
+
+// resolveSystemEnv fills what the file leaves empty from variables named for
+// this system (VSP_<NAME>_...), and from the vsp-wide VSP_TRANSPORT_ATTRIBUTE
+// and VSP_CACHE.
+func resolveSystemEnv(name string, sys *SystemConfig) {
+	upper := strings.ToUpper(name)
 
 	// Resolve password from environment variable if not set
 	if sys.Password == "" {
 		// Try VSP_<SYSTEM>_PASSWORD (e.g., VSP_A4H_PASSWORD)
-		envKey := fmt.Sprintf("VSP_%s_PASSWORD", strings.ToUpper(name))
-		if pwd := os.Getenv(envKey); pwd != "" {
+		if pwd := os.Getenv(fmt.Sprintf("VSP_%s_PASSWORD", upper)); pwd != "" {
 			sys.Password = pwd
 		}
 	}
 
 	if sys.TransportAttribute == "" {
-		envKey := fmt.Sprintf("VSP_%s_TRANSPORT_ATTRIBUTE", strings.ToUpper(name))
-		if attr := strings.TrimSpace(os.Getenv(envKey)); attr != "" {
-			sys.TransportAttribute = strings.ToUpper(attr)
+		if attr := strings.TrimSpace(os.Getenv(fmt.Sprintf("VSP_%s_TRANSPORT_ATTRIBUTE", upper))); attr != "" {
+			sys.TransportAttribute = attr
 		}
 	}
 	if sys.TransportAttribute == "" {
 		if attr := strings.TrimSpace(os.Getenv("VSP_TRANSPORT_ATTRIBUTE")); attr != "" {
-			sys.TransportAttribute = strings.ToUpper(attr)
+			sys.TransportAttribute = attr
 		}
-	} else {
-		sys.TransportAttribute = strings.ToUpper(strings.TrimSpace(sys.TransportAttribute))
 	}
 
-	// Resolve RFC credentials: VSP_<SYSTEM>_RFC_PASSWORD, then the RFC
-	// environment (SAP_USER/SAP_PASSWORD) used by the open-rfc-go tooling.
+	// RFC credentials: VSP_<SYSTEM>_RFC_PASSWORD
 	if sys.RFCPassword == "" {
-		envKey := fmt.Sprintf("VSP_%s_RFC_PASSWORD", strings.ToUpper(name))
-		if pwd := os.Getenv(envKey); pwd != "" {
+		if pwd := os.Getenv(fmt.Sprintf("VSP_%s_RFC_PASSWORD", upper)); pwd != "" {
 			sys.RFCPassword = pwd
 		}
 	}
+	// SAProuter route: VSP_<SYSTEM>_RFC_SAPROUTER
+	if sys.RFCSaprouter == "" {
+		if r := strings.TrimSpace(os.Getenv(fmt.Sprintf("VSP_%s_RFC_SAPROUTER", upper))); r != "" {
+			sys.RFCSaprouter = r
+		}
+	}
+
+	// Resolve cache from env if not set in config
+	if !sys.Cache {
+		if strings.EqualFold(os.Getenv(fmt.Sprintf("VSP_%s_CACHE", upper)), "true") {
+			sys.Cache = true
+		}
+	}
+	if !sys.Cache {
+		if strings.EqualFold(os.Getenv("VSP_CACHE"), "true") {
+			sys.Cache = true
+		}
+	}
+}
+
+// resolveSharedSAPEnv falls back to the RFC environment used by the open-rfc-go
+// tooling (SAP_USER/SAP_PASSWORD/SAP_SAPROUTER), which is not tied to a system.
+func resolveSharedSAPEnv(sys *SystemConfig) {
 	if sys.RFCPassword == "" {
 		if pwd := os.Getenv("SAP_PASSWORD"); pwd != "" {
 			sys.RFCPassword = pwd
@@ -234,44 +290,24 @@ func (c *SystemsConfig) GetSystem(name string) (*SystemConfig, error) {
 			sys.RFCUser = u
 		}
 	}
-	// Resolve the SAProuter route: VSP_<SYSTEM>_RFC_SAPROUTER, then SAP_SAPROUTER.
-	if sys.RFCSaprouter == "" {
-		envKey := fmt.Sprintf("VSP_%s_RFC_SAPROUTER", strings.ToUpper(name))
-		if r := strings.TrimSpace(os.Getenv(envKey)); r != "" {
-			sys.RFCSaprouter = r
-		}
-	}
 	if sys.RFCSaprouter == "" {
 		if r := strings.TrimSpace(os.Getenv("SAP_SAPROUTER")); r != "" {
 			sys.RFCSaprouter = r
 		}
 	}
+}
 
-	// Resolve cache from env if not set in config
-	if !sys.Cache {
-		envKey := fmt.Sprintf("VSP_%s_CACHE", strings.ToUpper(name))
-		if strings.EqualFold(os.Getenv(envKey), "true") {
-			sys.Cache = true
-		}
-	}
-	if !sys.Cache {
-		if strings.EqualFold(os.Getenv("VSP_CACHE"), "true") {
-			sys.Cache = true
-		}
-	}
+func applySystemDefaults(name string, sys *SystemConfig) {
+	sys.TransportAttribute = strings.ToUpper(strings.TrimSpace(sys.TransportAttribute))
 	if sys.Cache && sys.CachePath == "" {
 		sys.CachePath = fmt.Sprintf(".vsp-cache/%s.db", strings.ToLower(name))
 	}
-
-	// Apply defaults
 	if sys.Client == "" {
 		sys.Client = "001"
 	}
 	if sys.Language == "" {
 		sys.Language = "EN"
 	}
-
-	return &sys, nil
 }
 
 // ListSystems returns a list of configured system names.

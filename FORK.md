@@ -18,6 +18,7 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(adt): tunnel the ordinary ADT client over RFC too` | With only the first patch, just the explicit `rfc` surface used the route; `pkg/adt.Client` — behind `GetSource`, `GetClassInfo`, `SearchObject`, `Activate` and most other tools — still dialled HTTP and timed out. When `rfc_saprouter` is set, the ADT client now runs over the RFC tunnel (`SADT_REST_RFC_ENDPOINT`), and CSRF handling is skipped on that channel. Systems without a router are untouched. |
 | `feat(rfc): opt-in CpicStreaming` | Writes and syntax checks through the tunnel failed above ~28000 bytes (`CPIC streaming is disabled…`). The limit was a hardcoded client flag in `open-rfc-go`, not SAP Basis. Adds `rfc_cpic_streaming` (off by default). Needs the [open-rfc-go fork](https://github.com/SkvallKu/open-rfc-go). |
 | `fix(adt): resolve package from object metadata` | When quickSearch omits the package of an object, it is read from the object's own metadata instead of being reported as missing. |
+| `feat(mcp): start the server for a .vsp.json system with -s` | The server ignored `-s`: the RFC tunnel took its host from the `default` system and its logon from `SAP_USER`/`SAP_PASSWORD`, so one project could not run servers for several systems or clients. `vsp -s <name>` now takes the connection from that system. Opt-in: without `-s` nothing changes. |
 
 ### Older releases (7.40, 7.50)
 
@@ -57,10 +58,33 @@ The password comes from `VSP_<SYS>_RFC_PASSWORD` or `SAP_PASSWORD` — never put
 Route strings are normalised to the `/H/…/H/` form `open-rfc-go` expects:
 `/H/router/S/3299` → `/H/router/S/3299/H/`; an empty route means a direct connection.
 
-**MCP:** set `SAP_SAPROUTER` (and `SAP_PASSWORD`) in the server's `env` in `.mcp.json`.
+**MCP, one system:** set `SAP_SAPROUTER` (and `SAP_PASSWORD`) in the server's `env` in `.mcp.json`.
 The RFC tunnel reads `rfc_host`/`rfc_sysnr` from the `default` system of the
 `.vsp.json` in the server's working directory, so keep one `.vsp.json` per project
 folder with `default` pointing at that system.
+
+**MCP, several systems or clients:** start each server with `-s <name>`. The server
+then takes URL, client, language, user, `rfc_*` and the route from that system, and the
+password from `VSP_<NAME>_PASSWORD` (RFC: `rfc_user`, `VSP_<NAME>_RFC_PASSWORD`, else the
+same logon). `SAP_USER`, `SAP_PASSWORD`, `SAP_SAPROUTER` and the `default` system are not
+used for the connection: they usually belong to another system, so a missing setting stops
+the server instead of logging on with them.
+
+- Precedence: command-line flags > the system > `SAP_*` variables and `.env`.
+- Safety in the system only narrows the flags: `read_only`, `block_free_sql`,
+  `transport_read_only` are added; `allowed_packages`/`allowed_transports` apply when the
+  flag is absent, and a flag list must stay within the system's. `enable_transports` and
+  `allow_transportable_edits` stay flags only.
+- SSO and cookie systems are refused with `-s` for now (use the flags).
+
+```jsonc
+// .mcp.json — no secrets; passwords are VSP_DEV_PASSWORD / VSP_DATA_PASSWORD in .env
+{ "mcpServers": {
+  "vsp":      { "command": "vsp", "args": ["-s", "DEV", "--mode", "focused", "--allowed-packages", "$TMP"] },
+  "vsp-data": { "command": "vsp", "args": ["-s", "DATA", "--mode", "focused", "--read-only",
+                                           "--transport-read-only", "--disabled-groups", "RTDHXIGC"] }
+} }
+```
 
 ```sh
 vsp -s prod rfc info --verbose
