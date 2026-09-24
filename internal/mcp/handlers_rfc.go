@@ -223,7 +223,7 @@ func (s *Server) dropSharedRFC(ctx context.Context) {
 }
 
 // dialRFC resolves the destination for this server's system, honouring per-call
-// overrides and the RFC settings of the default .vsp.json system.
+// overrides and the RFC settings of this server's .vsp.json system.
 func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.Client, error) {
 	dest, err := s.rfcDestination(params)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 }
 
 // rfcDestination resolves where an RFC call goes: this server's system, the RFC
-// settings of the default .vsp.json system, and any per-call override.
+// settings of its .vsp.json entry, and any per-call override.
 func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	in := saprfc.Input{
 		URL:      s.config.BaseURL,
@@ -250,9 +250,11 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	if pwd := os.Getenv("SAP_PASSWORD"); pwd != "" {
 		in.RFCPassword = pwd
 	}
-	// Per-system RFC settings from the default .vsp.json system, when present.
-	if cfg, _, err := config.LoadSystems(); err == nil && cfg != nil && cfg.Default != "" {
-		if sys, err := cfg.GetSystem(cfg.Default); err == nil {
+	// Per-system RFC settings of this server's own .vsp.json system. Taking the
+	// default system's instead sent every other server to the default system's
+	// gateway, with the default system's RFC credentials.
+	if cfg, _, err := config.LoadSystems(); err == nil && cfg != nil {
+		if sys := s.ownSystem(cfg); sys != nil {
 			in.RFCHost, in.RFCSysnr, in.RFCPort = sys.RFCHost, sys.RFCSysnr, sys.RFCPort
 			if sys.RFCUser != "" {
 				in.RFCUser = sys.RFCUser
@@ -268,6 +270,35 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 	in.PortFlag = intParam(params, "port", 0)
 
 	return saprfc.Resolve(in)
+}
+
+// ownSystem is this server's entry in .vsp.json: the one named by -s /
+// SAP_SYSTEM, otherwise the one entry whose URL and client are this server's.
+// Nil when there is none, or more than one -- borrowing another system's
+// settings is worse than having none.
+func (s *Server) ownSystem(cfg *config.SystemsConfig) *config.SystemConfig {
+	if s.config.SystemName != "" {
+		if sys, err := cfg.GetSystem(s.config.SystemName); err == nil {
+			return sys
+		}
+		return nil
+	}
+	norm := func(u string) string { return strings.ToLower(strings.TrimRight(strings.TrimSpace(u), "/")) }
+	var found *config.SystemConfig
+	for name := range cfg.Systems {
+		sys, err := cfg.GetSystem(name)
+		if err != nil || norm(sys.URL) != norm(s.config.BaseURL) {
+			continue
+		}
+		if sys.Client != "" && s.config.Client != "" && sys.Client != s.config.Client {
+			continue
+		}
+		if found != nil {
+			return nil
+		}
+		found = sys
+	}
+	return found
 }
 
 func rfcResult(v any) (*mcp.CallToolResult, bool, error) {
