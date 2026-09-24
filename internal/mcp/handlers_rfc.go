@@ -236,9 +236,48 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 	return c, nil
 }
 
+// systemRFCInput is the destination of a server started with -s / SAP_SYSTEM. Host and RFC
+// logon come from that system only; the RFC logon falls back to the server's
+// own user and password (which came from the same system), never to
+// SAP_USER/SAP_PASSWORD or to the default system.
+func systemRFCInput(cfg *Config) saprfc.Input {
+	sys := cfg.System
+	return saprfc.Input{
+		URL:         cfg.BaseURL,
+		User:        cfg.Username,
+		Password:    cfg.Password,
+		Client:      cfg.Client,
+		Language:    cfg.Language,
+		RFCHost:     sys.RFCHost,
+		RFCSysnr:    sys.RFCSysnr,
+		RFCPort:     sys.RFCPort,
+		RFCUser:     sys.RFCUser,
+		RFCPassword: sys.RFCPassword,
+	}
+}
+
 // rfcDestination resolves where an RFC call goes: this server's system, the RFC
-// settings of its .vsp.json entry, and any per-call override.
+// settings of its .vsp.json entry, and any per-call override. A server whose
+// connection came from its .vsp.json system (-s) takes all of it from there.
 func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
+	var in saprfc.Input
+	if s.config.System != nil {
+		in = systemRFCInput(s.config)
+	} else {
+		in = s.envRFCInput()
+	}
+	in.HostFlag = getStringParam(params, "host")
+	in.SysnrFlag = getStringParam(params, "sysnr")
+	in.UserFlag = getStringParam(params, "user")
+	in.PortFlag = intParam(params, "port", 0)
+
+	return saprfc.Resolve(in)
+}
+
+// envRFCInput is the destination of a server configured by flags and SAP_*
+// variables: its own connection, the RFC environment, and the RFC settings of
+// its .vsp.json entry.
+func (s *Server) envRFCInput() saprfc.Input {
 	in := saprfc.Input{
 		URL:      s.config.BaseURL,
 		User:     s.config.Username,
@@ -264,12 +303,7 @@ func (s *Server) rfcDestination(params map[string]any) (saprfc.Params, error) {
 			}
 		}
 	}
-	in.HostFlag = getStringParam(params, "host")
-	in.SysnrFlag = getStringParam(params, "sysnr")
-	in.UserFlag = getStringParam(params, "user")
-	in.PortFlag = intParam(params, "port", 0)
-
-	return saprfc.Resolve(in)
+	return in
 }
 
 // ownSystem is this server's entry in .vsp.json: the one named by -s /

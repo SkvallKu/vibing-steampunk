@@ -227,6 +227,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Resolve configuration with priority: flags > env vars > defaults
 	resolveConfig(cmd)
 
+	// A server started with -s takes its connection from that .vsp.json system
+	if err := applySystemProfile(cmd); err != nil {
+		return err
+	}
+
 	// Validate configuration
 	if err := validateConfig(); err != nil {
 		return err
@@ -257,6 +262,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "[VERBOSE] Mode: %s\n", cfg.Mode)
 		if cfg.DisabledGroups != "" {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Disabled groups: %s (5/U=UI5, T=Tests, H=HANA, D=Debug)\n", cfg.DisabledGroups)
+		}
+		if systemName != "" {
+			fmt.Fprintf(os.Stderr, "[VERBOSE] System: %s (from .vsp.json, -s)\n", systemName)
 		}
 		fmt.Fprintf(os.Stderr, "[VERBOSE] SAP URL: %s\n", cfg.BaseURL)
 		fmt.Fprintf(os.Stderr, "[VERBOSE] SAP Client: %s\n", cfg.Client)
@@ -318,7 +326,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 		}
 
 		// Load transport_attribute from default system if not already set via env
-		if cfg.TransportAttribute == "" && systemsCfg.Default != "" {
+		if cfg.TransportAttribute == "" && systemsCfg.Default != "" && systemName == "" {
 			if sys, err := systemsCfg.GetSystem(systemsCfg.Default); err == nil && sys.TransportAttribute != "" {
 				cfg.TransportAttribute = sys.TransportAttribute
 			}
@@ -349,13 +357,7 @@ func resolveConfig(cmd *cobra.Command) {
 	// Check if cookie auth is explicitly requested via CLI flags OR env vars
 	// If so, we should NOT load user/password from env/.env to avoid conflicts
 	// Cookie auth takes precedence over basic auth since it's more explicit
-	cookieAuthViaCLI := cmd.Flags().Changed("cookie-file") || cmd.Flags().Changed("cookie-string")
-	cookieAuthViaEnv := viper.GetString("COOKIE_FILE") != "" || viper.GetString("COOKIE_STRING") != ""
-	browserAuth, _ := cmd.Flags().GetBool("browser-auth")
-	hasBrowserAuth := browserAuth || viper.GetBool("BROWSER_AUTH")
-	samlAuth, _ := cmd.Flags().GetBool("saml-auth")
-	hasSAMLAuth := samlAuth || viper.GetBool("SAML_AUTH")
-	hasCookieAuth := cookieAuthViaCLI || cookieAuthViaEnv || hasBrowserAuth || hasSAMLAuth || ssoRequested(cmd)
+	hasCookieAuth := cookieAuthRequested(cmd)
 
 	// URL: flag > SAP_URL env
 	if cfg.BaseURL == "" {
@@ -518,6 +520,137 @@ func resolveConfig(cmd *cobra.Command) {
 	} else {
 		cfg.KeepAliveInterval, _ = cmd.Flags().GetDuration("keepalive")
 	}
+}
+
+// cookieAuthRequested reports whether the server was asked to authenticate by
+// cookies, browser auth, SAML or SSO rather than by user and password.
+func cookieAuthRequested(cmd *cobra.Command) bool {
+	cookieAuthViaCLI := cmd.Flags().Changed("cookie-file") || cmd.Flags().Changed("cookie-string")
+	cookieAuthViaEnv := viper.GetString("COOKIE_FILE") != "" || viper.GetString("COOKIE_STRING") != ""
+	browserAuth, _ := cmd.Flags().GetBool("browser-auth")
+	hasBrowserAuth := browserAuth || viper.GetBool("BROWSER_AUTH")
+	samlAuth, _ := cmd.Flags().GetBool("saml-auth")
+	hasSAMLAuth := samlAuth || viper.GetBool("SAML_AUTH")
+	return cookieAuthViaCLI || cookieAuthViaEnv || hasBrowserAuth || hasSAMLAuth || ssoRequested(cmd)
+}
+
+// applySystemProfile makes a server started with -s <name> take its connection
+// from that system in .vsp.json. Without -s it does nothing, so a server
+// configured by flags, SAP_* variables and .env behaves exactly as before.
+//
+// Precedence with -s: command-line flags > the system > SAP_* variables and
+// .env, which are ignored for the connection. The user and password come from
+// a flag or from the system (its "user" and VSP_<NAME>_PASSWORD), never from
+// SAP_USER/SAP_PASSWORD, and a missing one is an error rather than a fallback:
+// those variables usually belong to another system, and logging on to it with
+// them is the failure this option exists to prevent.
+//
+// Safety settings in the system can only narrow what the flags allow:
+// read_only, block_free_sql and transport_read_only are added to the flags,
+// allowed_packages and allowed_transports apply when the flag is absent, and a
+// flag list must stay inside the system's list. Settings that widen access
+// (enable_transports, allow_transportable_edits) are left to the flags.
+func applySystemProfile(cmd *cobra.Command) error {
+	if systemName == "" {
+		return nil
+	}
+	sc, _, err := config.LoadSystems()
+	if err != nil {
+		return fmt.Errorf("-s %s: %w", systemName, err)
+	}
+	if sc == nil {
+		return fmt.Errorf("-s %s: no systems config found (%s)", systemName, strings.Join(config.ConfigPaths(), ", "))
+	}
+	sys, err := sc.GetServerSystem(systemName)
+	if err != nil {
+		return fmt.Errorf("-s %s: %w", systemName, err)
+	}
+	if sys.UsesSSO() || sys.CookieFile != "" || sys.CookieString != "" {
+		return fmt.Errorf("-s %s: SSO and cookie systems are not supported by the server yet; pass --sso or --cookie-file instead of -s", systemName)
+	}
+
+	flags := cmd.Flags()
+	if !flags.Changed("url") && !flags.Changed("service") {
+		cfg.BaseURL = sys.URL
+	}
+	if cfg.BaseURL == "" {
+		return fmt.Errorf("-s %s: the system has no \"url\"; set it in .vsp.json or pass --url", systemName)
+	}
+	if !flags.Changed("client") {
+		cfg.Client = sys.Client
+	}
+	if !flags.Changed("language") {
+		cfg.Language = sys.Language
+	}
+	if !flags.Changed("insecure") {
+		cfg.InsecureSkipVerify = sys.Insecure
+	}
+
+	if !cookieAuthRequested(cmd) {
+		if !flags.Changed("user") {
+			cfg.Username = sys.User
+		}
+		if !flags.Changed("password") && !flags.Changed("pass") {
+			cfg.Password = sys.Password
+		}
+		if cfg.Username == "" {
+			return fmt.Errorf("-s %s: the system has no \"user\"; set it in .vsp.json or pass --user", systemName)
+		}
+		if cfg.Password == "" {
+			return fmt.Errorf("-s %s: no password; set VSP_%s_PASSWORD or pass --password", systemName, strings.ToUpper(systemName))
+		}
+	}
+
+	cfg.ReadOnly = cfg.ReadOnly || sys.ReadOnly
+	cfg.BlockFreeSQL = cfg.BlockFreeSQL || sys.BlockFreeSQL
+	cfg.TransportReadOnly = cfg.TransportReadOnly || sys.TransportReadOnly
+	if cfg.AllowedPackages, err = narrowList("allowed-packages", cfg.AllowedPackages, sys.AllowedPackages); err != nil {
+		return fmt.Errorf("-s %s: %w", systemName, err)
+	}
+	if cfg.AllowedTransports, err = narrowList("allowed-transports", cfg.AllowedTransports, sys.AllowedTransports); err != nil {
+		return fmt.Errorf("-s %s: %w", systemName, err)
+	}
+
+	if cfg.TransportAttribute == "" {
+		cfg.TransportAttribute = sys.TransportAttribute
+	}
+	cfg.System = sys
+	return nil
+}
+
+// narrowList combines an allow-list given as a flag (or SAP_* variable) with
+// the one in the system. Either alone applies; with both, every flag pattern
+// must fall inside the system's list, and the flag list applies.
+func narrowList(name string, flag, system []string) ([]string, error) {
+	if len(system) == 0 {
+		return flag, nil
+	}
+	if len(flag) == 0 {
+		return system, nil
+	}
+	for _, p := range flag {
+		if !patternWithin(p, system) {
+			return nil, fmt.Errorf("--%s %q is not within the system's %v", name, p, system)
+		}
+	}
+	return flag, nil
+}
+
+// patternWithin reports whether everything pattern p matches is also matched
+// by one of patterns, in the matching used for allowed packages and transports:
+// case-insensitive, exact or with a single trailing "*".
+func patternWithin(p string, patterns []string) bool {
+	p = strings.ToUpper(p)
+	for _, q := range patterns {
+		q = strings.ToUpper(q)
+		if p == q {
+			return true
+		}
+		if prefix, ok := strings.CutSuffix(q, "*"); ok && strings.HasPrefix(strings.TrimSuffix(p, "*"), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateConfig() error {
