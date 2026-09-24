@@ -322,9 +322,32 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 	return c, nil
 }
 
+// systemRFCInput is the destination of a server started with -s. Host and RFC
+// logon come from that system only; the RFC logon falls back to the server's
+// own user and password (which came from the same system), never to
+// SAP_USER/SAP_PASSWORD or to the default system.
+func systemRFCInput(cfg *Config) saprfc.Input {
+	sys := cfg.System
+	return saprfc.Input{
+		URL:              cfg.BaseURL,
+		User:             cfg.Username,
+		Password:         cfg.Password,
+		Client:           cfg.Client,
+		Language:         cfg.Language,
+		RFCHost:          sys.RFCHost,
+		RFCSysnr:         sys.RFCSysnr,
+		RFCPort:          sys.RFCPort,
+		RFCUser:          sys.RFCUser,
+		RFCPassword:      sys.RFCPassword,
+		RFCSaprouter:     sys.RFCSaprouter,
+		RFCCpicStreaming: sys.RFCCpicStreaming,
+	}
+}
+
 // baseRFCInput builds the RFC destination fields common to every RFC-routed
 // call on this server: this system's own logon, the RFC settings of its
-// .vsp.json entry, and SAP_SAPROUTER. Shared by rfcDestination (which adds the
+// .vsp.json entry, and SAP_SAPROUTER -- or, for a server started with -s,
+// that system alone (systemRFCInput). Shared by rfcDestination (which adds the
 // per-call overrides of the rfc action) and rfcTunnelDest (no overrides: it
 // decides how the ordinary ADT client is built, before a Server exists).
 //
@@ -335,6 +358,9 @@ func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.C
 // it, so a server connected to another system would otherwise log on over
 // RFC as that system's user.
 func baseRFCInput(c *Config) (saprfc.Input, error) {
+	if c.System != nil {
+		return systemRFCInput(c), nil
+	}
 	in := saprfc.Input{
 		URL:          c.BaseURL,
 		User:         c.Username,
