@@ -1,6 +1,12 @@
 package adt
 
-import "testing"
+import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestNormalizeDataPreviewSQL(t *testing.T) {
 	tests := map[string]string{
@@ -55,5 +61,50 @@ func TestLegacyDataPreviewSQL(t *testing.T) {
 		if ok && got != tt.want {
 			t.Errorf("%q:\n got  %q\n want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// commaSensitivePreview answers the data preview the way 7.40 SP06 does for a
+// statement that names a field the table does not have: with commas between
+// the columns the generated program fails on them, without commas the
+// parser gets as far as the field.
+type commaSensitivePreview struct{ bodies []string }
+
+func (m *commaSensitivePreview) Do(req *http.Request) (*http.Response, error) {
+	h := http.Header{}
+	h.Set("X-CSRF-Token", "t")
+	msg := "ok"
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		m.bodies = append(m.bodies, string(b))
+		msg = "The field NOSUCHFIELD is unknown"
+		if strings.Contains(string(b), ",") {
+			msg = "Explicit length specifications are necessary with types C, P, X, and N in the OO context"
+		}
+	}
+	status := http.StatusBadRequest
+	if req.Body == nil {
+		status = http.StatusOK
+	}
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(msg)), Header: h}, nil
+}
+
+func TestGetTableContents_RetryErrorIsReported(t *testing.T) {
+	mock := &commaSensitivePreview{}
+	cfg := NewConfig("https://sap.example.com:44300", "u", "p")
+	client := NewClientWithTransport(cfg, NewTransportWithClient(cfg, mock))
+
+	_, err := client.GetTableContents(context.Background(), "T000", 10, "SELECT MANDT, NOSUCHFIELD FROM T000")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(mock.bodies) != 2 {
+		t.Fatalf("expected the statement and its retry without commas, got %q", mock.bodies)
+	}
+	msg := err.Error()
+	field := strings.Index(msg, "NOSUCHFIELD is unknown")
+	oo := strings.Index(msg, "OO context")
+	if field < 0 || oo < 0 || field > oo {
+		t.Errorf("want the retry's error first, then the first attempt's; got: %v", err)
 	}
 }

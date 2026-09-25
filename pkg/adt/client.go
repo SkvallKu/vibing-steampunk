@@ -1310,10 +1310,20 @@ func (c *Client) GetTableContents(ctx context.Context, tableName string, maxRows
 		// takes; say it once more in its syntax. See datapreview_legacy.go.
 		if legacy, ok := legacyDataPreviewSQL(sqlFilter); ok && isBadRequest(err) {
 			opts.Body = []byte(legacy)
-			if resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts); err2 == nil {
+			resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts)
+			if err2 == nil {
 				res, perr := parseTableContents(resp2.Body)
 				return noteRowFallback(res, maxRows), perr
 			}
+			// On the classic parser the first answer is about the commas
+			// ("explicit length specifications ... in the OO context") and
+			// hides the real fault, a wrong field say; the retry names it.
+			// A newer parser names it in both, and once is enough then.
+			// Otherwise give both, the retry first.
+			if err2.Error() == err.Error() {
+				return nil, fmt.Errorf("getting table contents: %w", err2)
+			}
+			return nil, fmt.Errorf("getting table contents: %w (first attempt, with commas between columns: %v)", err2, err)
 		}
 		return nil, fmt.Errorf("getting table contents: %w", err)
 	}
