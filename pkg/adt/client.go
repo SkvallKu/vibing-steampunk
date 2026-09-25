@@ -1693,6 +1693,7 @@ type InstalledComponent struct {
 	Name        string `json:"name"`
 	Release     string `json:"release"`
 	SupportPack string `json:"supportPack,omitempty"`
+	Package     string `json:"package,omitempty"` // the last support package applied, e.g. SAPK-75025INSAPBASIS
 	Description string `json:"description,omitempty"`
 }
 
@@ -1705,33 +1706,59 @@ func (c *Client) GetInstalledComponents(ctx context.Context) ([]InstalledCompone
 	if err != nil {
 		return nil, fmt.Errorf("getting installed components: %w", err)
 	}
+	return parseInstalledComponents(resp.Body)
+}
 
-	type componentXML struct {
-		Name        string `xml:"name,attr"`
-		Release     string `xml:"release,attr"`
-		SupportPack string `xml:"supportPack,attr"`
-		Description string `xml:"description,attr"`
+// parseInstalledComponents reads the answer of /system/components. SAP
+// answers with an Atom feed (seen on 7.40 and 7.50): an entry per component,
+// its name in atom:id and the rest in atom:title as
+// "release;support package;SP level;description". The <components> form
+// with attributes is read too, for a system that answers so.
+func parseInstalledComponents(body []byte) ([]InstalledComponent, error) {
+	var root struct {
+		XMLName xml.Name
+		Entries []struct {
+			ID    string `xml:"id"`
+			Title string `xml:"title"`
+		} `xml:"entry"`
+		Components []struct {
+			Name        string `xml:"name,attr"`
+			Release     string `xml:"release,attr"`
+			SupportPack string `xml:"supportPack,attr"`
+			Description string `xml:"description,attr"`
+		} `xml:"component"`
 	}
-	type componentsXML struct {
-		XMLName    xml.Name       `xml:"components"`
-		Components []componentXML `xml:"component"`
-	}
-
-	var comps componentsXML
-	if err := xml.Unmarshal(resp.Body, &comps); err != nil {
+	if err := xml.Unmarshal(body, &root); err != nil {
 		return nil, fmt.Errorf("parsing components: %w", err)
 	}
 
-	result := make([]InstalledComponent, len(comps.Components))
-	for i, c := range comps.Components {
-		result[i] = InstalledComponent{
-			Name:        c.Name,
-			Release:     c.Release,
-			SupportPack: c.SupportPack,
-			Description: c.Description,
+	result := []InstalledComponent{}
+	switch root.XMLName.Local {
+	case "feed":
+		for _, e := range root.Entries {
+			comp := InstalledComponent{Name: strings.TrimSpace(e.ID)}
+			parts := strings.SplitN(e.Title, ";", 4)
+			for len(parts) < 4 {
+				parts = append(parts, "")
+			}
+			comp.Release = parts[0]
+			comp.Package = parts[1]
+			comp.SupportPack = parts[2]
+			comp.Description = parts[3]
+			result = append(result, comp)
 		}
+	case "components":
+		for _, c := range root.Components {
+			result = append(result, InstalledComponent{
+				Name:        c.Name,
+				Release:     c.Release,
+				SupportPack: c.SupportPack,
+				Description: c.Description,
+			})
+		}
+	default:
+		return nil, fmt.Errorf("parsing components: unexpected root element <%s>", root.XMLName.Local)
 	}
-
 	return result, nil
 }
 
