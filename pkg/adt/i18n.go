@@ -308,6 +308,11 @@ func (c *Client) GetTextPoolInLanguage(ctx context.Context, programName, lang st
 			OverrideLanguage: lang,
 		})
 		if err != nil {
+			// A release without the resource answers 404 too, for every kind:
+			// read as "no texts", that is an empty text pool that looks right.
+			if IsNoHandlerError(err) {
+				return nil, errNoTextElements(err)
+			}
 			// One missing kind is not a missing text pool: a report with no
 			// selection screen has no selection texts, and that is an answer.
 			// A caller that treated the first 404 as fatal would lose the two

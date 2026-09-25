@@ -910,6 +910,19 @@ func IsNotFoundError(err error) bool {
 	return false
 }
 
+// IsNoHandlerError reports a 404 from the ADT router itself: no handler is
+// registered for the URI, so the resource does not exist on this release at
+// all ("No application class found for URI: ..."). That is not the same 404
+// as a missing object, and a caller that reads a 404 as "nothing there" must
+// not read this one that way — the answer would be empty and look right.
+func IsNoHandlerError(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !apiErr.IsNotFound() {
+		return false
+	}
+	return strings.Contains(apiErr.Message, "No application class found")
+}
+
 // IsSessionExpiredError checks if an error indicates SAP session timeout.
 func IsSessionExpiredError(err error) bool {
 	if err == nil {
