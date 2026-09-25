@@ -356,42 +356,46 @@ func (s *Server) handleGetVariants(ctx context.Context, request mcp.CallToolRequ
 	return mcp.NewToolResultText(sb.String()), nil
 }
 
-func (s *Server) handleGetTextElements(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if errResult := s.ensureWSConnected(ctx, "GetTextElements"); errResult != nil {
-		return errResult, nil
-	}
+// GetTextElements and SetTextElements read and write the text pool over ADT
+// (/sap/bc/adt/textelements), the same path as texts_get/texts_set. They
+// used to go through the ZADT_VSP WebSocket, which a system reached only by
+// RFC through a SAProuter cannot answer: the WebSocket dials the ICM port
+// directly, and the RFC tunnel carries request/response ADT calls only.
 
+func (s *Server) handleGetTextElements(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	program, _ := request.GetArguments()["program"].(string)
 	if program == "" {
 		return newToolResultError("program parameter is required"), nil
 	}
-
 	language, _ := request.GetArguments()["language"].(string)
+	if language == "" {
+		language = s.adtClient.Language()
+	}
 
-	result, err := s.amdpWSClient.GetTextElements(ctx, program, language)
+	entries, err := s.adtClient.TextPool(ctx, adt.TextPoolTarget{Type: "PROG", Name: program}, language)
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("GetTextElements failed: %v", err)), nil
 	}
 
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "Text Elements for %s (Language: %s)\n\n", result.Program, result.Language)
-
-	sb.WriteString("Selection Texts:\n")
-	if len(result.SelectionTexts) == 0 {
-		sb.WriteString("  (none)\n")
-	} else {
-		for key, text := range result.SelectionTexts {
-			fmt.Fprintf(&sb, "  %s: %s\n", key, text)
-		}
+	byKind := map[string][]adt.TextPoolEntry{}
+	for _, e := range entries {
+		byKind[e.ID] = append(byKind[e.ID], e)
 	}
-	sb.WriteString("\n")
 
-	sb.WriteString("Text Symbols:\n")
-	if len(result.TextSymbols) == 0 {
-		sb.WriteString("  (none)\n")
-	} else {
-		for key, text := range result.TextSymbols {
-			fmt.Fprintf(&sb, "  TEXT-%s: %s\n", key, text)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Text Elements for %s (Language: %s)\n", strings.ToUpper(program), strings.ToUpper(language))
+	for _, section := range []struct{ id, title, prefix string }{
+		{"S", "Selection Texts", ""},
+		{"I", "Text Symbols", "TEXT-"},
+		{"H", "Heading Texts", ""},
+	} {
+		fmt.Fprintf(&sb, "\n%s:\n", section.title)
+		if len(byKind[section.id]) == 0 {
+			sb.WriteString("  (none)\n")
+			continue
+		}
+		for _, e := range byKind[section.id] {
+			fmt.Fprintf(&sb, "  %s%s: %s\n", section.prefix, e.Key, e.Text)
 		}
 	}
 
@@ -399,62 +403,46 @@ func (s *Server) handleGetTextElements(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleSetTextElements(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if errResult := s.ensureWSConnected(ctx, "SetTextElements"); errResult != nil {
-		return errResult, nil
-	}
-
-	program, _ := request.GetArguments()["program"].(string)
+	args := request.GetArguments()
+	program, _ := args["program"].(string)
 	if program == "" {
 		return newToolResultError("program parameter is required"), nil
 	}
 
-	params := adt.SetTextElementsParams{
-		Program: program,
-	}
-
-	if language, ok := request.GetArguments()["language"].(string); ok {
-		params.Language = language
-	}
-
-	if selTextsStr, ok := request.GetArguments()["selection_texts"].(string); ok && selTextsStr != "" {
-		var selTexts map[string]string
-		if err := json.Unmarshal([]byte(selTextsStr), &selTexts); err != nil {
-			return newToolResultError(fmt.Sprintf("Invalid selection_texts JSON: %v", err)), nil
+	kinds := map[string]map[string]string{}
+	for _, p := range []struct{ param, kind string }{
+		{"selection_texts", "S"},
+		{"text_symbols", "I"},
+		{"heading_texts", "H"},
+	} {
+		raw, ok := args[p.param].(string)
+		if !ok || raw == "" {
+			continue
 		}
-		params.SelectionTexts = selTexts
-	}
-
-	if textSymsStr, ok := request.GetArguments()["text_symbols"].(string); ok && textSymsStr != "" {
-		var textSyms map[string]string
-		if err := json.Unmarshal([]byte(textSymsStr), &textSyms); err != nil {
-			return newToolResultError(fmt.Sprintf("Invalid text_symbols JSON: %v", err)), nil
+		var texts map[string]string
+		if err := json.Unmarshal([]byte(raw), &texts); err != nil {
+			return newToolResultError(fmt.Sprintf("Invalid %s JSON: %v", p.param, err)), nil
 		}
-		params.TextSymbols = textSyms
+		kinds[p.kind] = texts
 	}
-
-	if headTextsStr, ok := request.GetArguments()["heading_texts"].(string); ok && headTextsStr != "" {
-		var headTexts map[string]string
-		if err := json.Unmarshal([]byte(headTextsStr), &headTexts); err != nil {
-			return newToolResultError(fmt.Sprintf("Invalid heading_texts JSON: %v", err)), nil
-		}
-		params.HeadingTexts = headTexts
-	}
-
-	if params.SelectionTexts == nil && params.TextSymbols == nil && params.HeadingTexts == nil {
+	if len(kinds) == 0 {
 		return newToolResultError("At least one of selection_texts, text_symbols, or heading_texts is required"), nil
 	}
 
-	result, err := s.amdpWSClient.SetTextElements(ctx, params)
-	if err != nil {
-		return newToolResultError(fmt.Sprintf("SetTextElements failed: %v", err)), nil
+	// As texts_set: a language named explicitly may be a translation; the
+	// logon language must be the object's master language.
+	language, _ := args["language"].(string)
+	opts := adt.TextPoolOptions{AnyLanguage: language != ""}
+	if language == "" {
+		language = s.adtClient.Language()
 	}
 
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "Text Elements Updated for %s (Language: %s)\n\n", result.Program, result.Language)
-	fmt.Fprintf(&sb, "Status: %s\n", result.Status)
-	fmt.Fprintf(&sb, "Selection Texts Set: %d\n", result.SelectionTextsSet)
-	fmt.Fprintf(&sb, "Text Symbols Set: %d\n", result.TextSymbolsSet)
-	fmt.Fprintf(&sb, "Heading Texts Set: %d\n", result.HeadingTextsSet)
-
-	return mcp.NewToolResultText(sb.String()), nil
+	plan, err := s.adtClient.WriteTextPool(ctx, adt.TextPoolTarget{Type: "PROG", Name: program}, language, kinds, "", opts)
+	if err != nil {
+		if plan != nil {
+			return newToolResultJSON(map[string]any{"error": err.Error(), "plan": plan}), nil
+		}
+		return newToolResultError(fmt.Sprintf("SetTextElements failed: %v", err)), nil
+	}
+	return newToolResultJSON(plan), nil
 }

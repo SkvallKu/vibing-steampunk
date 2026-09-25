@@ -2151,7 +2151,7 @@ func (s *Server) registerReportTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetTextElements") {
 		s.mcpServer.AddTool(mcp.NewTool("GetTextElements",
-			mcp.WithDescription("Get program text elements (selection texts and text symbols). Selection texts describe parameters (P_BUKRS='Company Code'), text symbols are TEXT-001 etc."),
+			mcp.WithDescription("Get program text elements (selection texts, text symbols and heading texts) over ADT. Selection texts describe parameters (P_BUKRS='Company Code'), text symbols are TEXT-001 etc."),
 			mcp.WithString("program",
 				mcp.Description("Program name"),
 				mcp.Required(),
@@ -2164,7 +2164,7 @@ func (s *Server) registerReportTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("SetTextElements") {
 		s.mcpServer.AddTool(mcp.NewTool("SetTextElements",
-			mcp.WithDescription("Set program text elements (selection texts, text symbols, and heading texts). Use for adding descriptions to selection screen parameters, text symbols, and list/column headings."),
+			mcp.WithDescription("Set program text elements (selection texts, text symbols, and heading texts) over ADT, then activate them. Keys not named keep their texts. A selection text for a field the screen does not have, or a language other than the program's master language when language is not named, is refused. Returns the plan: what was added, changed, left as it was, or refused."),
 			mcp.WithString("program",
 				mcp.Description("Program name"),
 				mcp.Required(),
@@ -2179,7 +2179,7 @@ func (s *Server) registerReportTools(shouldRegister func(string) bool) {
 				mcp.Description("JSON object of text symbols (e.g., '{\"001\":\"Header Text\",\"002\":\"Footer\"}')"),
 			),
 			mcp.WithString("heading_texts",
-				mcp.Description("JSON object of heading texts for list/column headings (e.g., '{\"001\":\"Report Title\",\"002\":\"Column Header\"}')"),
+				mcp.Description("JSON object of heading texts; keys are listHeader and columnHeader_1 to columnHeader_4 (e.g., '{\"listHeader\":\"Report Title\",\"columnHeader_1\":\"Column Header\"}')"),
 			),
 		), s.handleSetTextElements)
 	}
