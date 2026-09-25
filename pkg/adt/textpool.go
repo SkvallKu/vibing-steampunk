@@ -267,6 +267,14 @@ type TextPoolOptions struct {
 }
 
 // changes says whether the plan has anything to write.
+// errNoTextElements says the system has no text elements resource in ADT
+// (7.50 has none: its discovery does not list one, and every document
+// answers "No application class found"). The texts may well be there; they
+// cannot be read this way, and saying "no texts" would be a wrong answer.
+func errNoTextElements(err error) error {
+	return fmt.Errorf("this system has no ADT text elements resource (/sap/bc/adt/textelements), so the text pool cannot be read or written over ADT; the texts themselves may exist (SE38 → Goto → Text elements): %w", err)
+}
+
 func (p *TextPoolPlan) changes() int {
 	n := 0
 	for _, k := range p.Kinds {
@@ -305,6 +313,9 @@ func (c *Client) readTextDocument(ctx context.Context, t TextPoolTarget, kind, l
 		Stateful:         stateful,
 	})
 	if err != nil {
+		if IsNoHandlerError(err) {
+			return nil, errNoTextElements(err)
+		}
 		if IsNotFoundError(err) {
 			return &textDocument{}, nil
 		}
