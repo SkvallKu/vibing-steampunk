@@ -533,6 +533,7 @@ func rfcDestinationFor(cmd *cobra.Command) (saprfc.Params, error) {
 				in.RFCHost, in.RFCSysnr, in.RFCPort = sys.RFCHost, sys.RFCSysnr, sys.RFCPort
 				in.RFCUser, in.RFCPassword = sys.RFCUser, sys.RFCPassword
 				in.RFCSaprouter = sys.RFCSaprouter
+				in.RFCCpicStreaming = sys.RFCCpicStreaming
 			}
 		}
 	} else {
