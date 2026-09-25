@@ -11,6 +11,10 @@ func TestNormalizeDataPreviewSQL(t *testing.T) {
 		"SELECT * FROM T WHERE A IN ( 'X', 'Y' )": "SELECT * FROM T WHERE A IN ( 'X', 'Y' )",
 		"SELECT COUNT(*) FROM T":                  "SELECT COUNT( * ) FROM T",
 		"SELECT f() FROM T":                       "SELECT f() FROM T",
+		// A query written over several lines: on 7.40 SP06 the break is not
+		// white space and "DD03L\nWHERE" is read as a table name. A break
+		// inside a literal is the literal's and stays.
+		"SELECT *\r\nFROM DD03L\nWHERE TABNAME = 'A\nB'\tAND X = 1": "SELECT *  FROM DD03L WHERE TABNAME = 'A\nB' AND X = 1",
 	}
 	for in, want := range tests {
 		if got := normalizeDataPreviewSQL(in); got != want {

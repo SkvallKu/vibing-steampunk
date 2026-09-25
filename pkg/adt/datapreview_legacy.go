@@ -26,7 +26,10 @@ import (
 // commas that separate columns dropped.
 
 // normalizeDataPreviewSQL puts a blank after every comma and inside every
-// parenthesis, outside quotes. Every release accepts the result.
+// parenthesis, outside quotes, and makes a line break or a tab outside
+// quotes a blank: 7.40 SP06 does not take a line break for white space, so
+// "DD03L\nWHERE ..." reads as the name of a table that does not exist.
+// Every release accepts the result.
 func normalizeDataPreviewSQL(query string) string {
 	var out strings.Builder
 	inQuote := false
@@ -35,6 +38,9 @@ func normalizeDataPreviewSQL(query string) string {
 		ch := query[i]
 		if ch == '\'' {
 			inQuote = !inQuote
+		}
+		if !inQuote && blank(ch) {
+			ch = ' '
 		}
 		if !inQuote && ch == ')' && i > 0 && !blank(query[i-1]) && query[i-1] != '(' {
 			out.WriteByte(' ')
