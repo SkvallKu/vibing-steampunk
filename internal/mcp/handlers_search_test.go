@@ -53,6 +53,10 @@ func TestHandleSearchObject_ServerSideTypeFilter(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("handleSearchObject returned an error result: %+v", res)
 	}
+	// The server found nothing: that is [], not null.
+	if got := strings.TrimSpace(toolResultText(t, res)); got != "[]" {
+		t.Errorf("empty search = %q, want []", got)
+	}
 
 	if searchQuery == "" {
 		t.Fatal("no search request reached the server")

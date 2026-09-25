@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/oisee/vibing-steampunk/pkg/adt"
 )
 
 // routeSearchAction routes "search" action.
@@ -74,6 +75,10 @@ func (s *Server) handleSearchObject(ctx context.Context, request mcp.CallToolReq
 	more := len(results) > maxResults
 	if more {
 		results = results[:maxResults]
+	}
+	// Nothing found is an empty list, not null.
+	if results == nil {
+		results = []adt.SearchResult{}
 	}
 
 	// The bare array is kept as the answer when nothing was cut, because it is
