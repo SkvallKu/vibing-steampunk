@@ -1248,6 +1248,25 @@ func (c *Client) GetStructure(ctx context.Context, structName string) (string, e
 type TableContentsResult struct {
 	Columns []TableColumn
 	Rows    []map[string]interface{}
+	// Note is a caveat about the result for whoever reads it; empty when
+	// there is none.
+	Note string `json:",omitempty"`
+}
+
+// rowFallbackAbove is the request size above which 7.40 SP06 data preview
+// was seen to answer with its default of 100 rows, as if rowNumber had not
+// been sent: 5,000 came back whole, 9,999 came back as 100. Nothing in the
+// answer tells the two apart, and asking again is not worth a request on
+// every system for the sake of one release, so the result is only marked.
+const rowFallbackAbove = 5000
+
+// noteRowFallback marks a result of exactly 100 rows for a request above
+// rowFallbackAbove: the rows may be all there are, or the system's default.
+func noteRowFallback(res *TableContentsResult, maxRows int) *TableContentsResult {
+	if res != nil && maxRows > rowFallbackAbove && len(res.Rows) == 100 {
+		res.Note = fmt.Sprintf("%d rows asked for, exactly 100 returned. On 7.40, data preview answers a request above about %d rows with its default of 100, so this may not be all of it: ask for at most %d rows, or narrow the WHERE clause.", maxRows, rowFallbackAbove, rowFallbackAbove)
+	}
+	return res
 }
 
 // TableColumn represents a column in table contents.
@@ -1292,13 +1311,15 @@ func (c *Client) GetTableContents(ctx context.Context, tableName string, maxRows
 		if legacy, ok := legacyDataPreviewSQL(sqlFilter); ok && isBadRequest(err) {
 			opts.Body = []byte(legacy)
 			if resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts); err2 == nil {
-				return parseTableContents(resp2.Body)
+				res, perr := parseTableContents(resp2.Body)
+				return noteRowFallback(res, maxRows), perr
 			}
 		}
 		return nil, fmt.Errorf("getting table contents: %w", err)
 	}
 
-	return parseTableContents(resp.Body)
+	res, err := parseTableContents(resp.Body)
+	return noteRowFallback(res, maxRows), err
 }
 
 // RunQuery executes a freestyle SQL query against the SAP database.
