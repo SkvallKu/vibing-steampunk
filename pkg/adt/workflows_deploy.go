@@ -14,20 +14,39 @@ import (
 type DeployResult struct {
 	// Transport is the request the write went under, and TransportNote
 	// says how it was chosen when the caller named none.
-	Transport          string   `json:"transport,omitempty"`
-	TransportNote      string   `json:"transportNote,omitempty"`
-	ObjectURL          string   `json:"objectUrl"`
-	ObjectName         string   `json:"objectName"`
-	ObjectType         string   `json:"objectType"`
-	FilePath           string   `json:"filePath"`
-	Success            bool     `json:"success"`
-	Created            bool     `json:"created"` // true if created, false if updated
-	SyntaxErrors       []string `json:"syntaxErrors,omitempty"`
+	Transport     string   `json:"transport,omitempty"`
+	TransportNote string   `json:"transportNote,omitempty"`
+	ObjectURL     string   `json:"objectUrl"`
+	ObjectName    string   `json:"objectName"`
+	ObjectType    string   `json:"objectType"`
+	FilePath      string   `json:"filePath"`
+	Success       bool     `json:"success"`
+	Created       bool     `json:"created"` // true if created, false if updated
+	SyntaxErrors  []string `json:"syntaxErrors,omitempty"`
+	// Warnings are what the syntax check had to say short of an error; they
+	// do not stop the deploy.
+	Warnings           []string `json:"warnings,omitempty"`
 	Errors             []string `json:"errors,omitempty"`
 	ExpectedSourceHash string   `json:"expectedSourceHash,omitempty"`
 	TargetSourceHash   string   `json:"targetSourceHash,omitempty"`
 	VerifiedSourceHash string   `json:"verifiedSourceHash,omitempty"`
 	Message            string   `json:"message,omitempty"`
+}
+
+// splitSyntaxResults sorts syntax check messages the way WriteSource does:
+// severity E, A or X is an error that stops the write, anything else is a
+// warning to pass on.
+func splitSyntaxResults(results []SyntaxCheckResult) (errs, warnings []string) {
+	for _, r := range results {
+		msg := fmt.Sprintf("Line %d: %s", r.Line, r.Text)
+		switch r.Severity {
+		case "E", "A", "X":
+			errs = append(errs, msg)
+		default:
+			warnings = append(warnings, msg)
+		}
+	}
+	return errs, warnings
 }
 
 // DeployFromFileOptions configures an optional optimistic-concurrency guard
@@ -143,12 +162,8 @@ func (c *Client) CreateFromFile(ctx context.Context, filePath, packageName, tran
 		}
 	}()
 
-	if len(syntaxErrors) > 0 {
-		// Convert syntax errors to strings
-		errorMsgs := make([]string, len(syntaxErrors))
-		for i, e := range syntaxErrors {
-			errorMsgs[i] = fmt.Sprintf("Line %d: %s", e.Line, e.Text)
-		}
+	errorMsgs, warnings := splitSyntaxResults(syntaxErrors)
+	if len(errorMsgs) > 0 {
 		return &DeployResult{
 			FilePath:     filePath,
 			ObjectURL:    objectURL,
@@ -156,7 +171,8 @@ func (c *Client) CreateFromFile(ctx context.Context, filePath, packageName, tran
 			ObjectType:   string(info.ObjectType),
 			Success:      false,
 			SyntaxErrors: errorMsgs,
-			Message:      fmt.Sprintf("Object created but has %d syntax errors", len(syntaxErrors)),
+			Warnings:     warnings,
+			Message:      fmt.Sprintf("Object created but has %d syntax errors", len(errorMsgs)),
 		}, nil
 	}
 
@@ -230,8 +246,9 @@ func (c *Client) CreateFromFile(ctx context.Context, filePath, packageName, tran
 		ObjectType: string(info.ObjectType),
 		Success:    true,
 		Transport:  transport, TransportNote: trNote,
-		Created: true,
-		Message: fmt.Sprintf("Successfully created and activated %s %s from %s", info.ObjectType, info.ObjectName, filePath),
+		Created:  true,
+		Warnings: warnings,
+		Message:  fmt.Sprintf("Successfully created and activated %s %s from %s", info.ObjectType, info.ObjectName, filePath),
 	}, nil
 }
 
@@ -302,6 +319,7 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 
 	// 4. Syntax check first — see the note above: a stateless request sent while
 	// the object is locked ends the session the lock belongs to.
+	var warnings []string
 	if !isClassInclude {
 		syntaxErrors, err := c.SyntaxCheck(ctx, objectURL, source)
 		if err != nil {
@@ -315,11 +333,9 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 				Message:    fmt.Sprintf("Syntax check failed: %v", err),
 			}, nil
 		}
-		if len(syntaxErrors) > 0 {
-			errorMsgs := make([]string, len(syntaxErrors))
-			for i, e := range syntaxErrors {
-				errorMsgs[i] = fmt.Sprintf("Line %d: %s", e.Line, e.Text)
-			}
+		var errorMsgs []string
+		errorMsgs, warnings = splitSyntaxResults(syntaxErrors)
+		if len(errorMsgs) > 0 {
 			return &DeployResult{
 				FilePath:     filePath,
 				ObjectURL:    objectURL,
@@ -327,7 +343,8 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 				ObjectType:   string(info.ObjectType),
 				Success:      false,
 				SyntaxErrors: errorMsgs,
-				Message:      fmt.Sprintf("Source has %d syntax errors", len(syntaxErrors)),
+				Warnings:     warnings,
+				Message:      fmt.Sprintf("Source has %d syntax errors", len(errorMsgs)),
 			}, nil
 		}
 	}
@@ -477,6 +494,7 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 		Transport:     transport,
 		TransportNote: trNote,
 		Created:       false,
+		Warnings:      warnings,
 		Message:       fmt.Sprintf("Successfully updated and activated %s %s from %s", objTypeStr, info.ObjectName, filePath),
 	}
 	if opts == nil || opts.ExpectedSourceHash == "" {

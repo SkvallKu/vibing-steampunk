@@ -3265,6 +3265,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if result.Message != "" {
 			fmt.Fprintf(os.Stderr, "%s\n", result.Message)
 		}
+		if len(result.Warnings) > 0 {
+			fmt.Fprintf(os.Stderr, "Warnings:\n")
+			for _, w := range result.Warnings {
+				fmt.Fprintf(os.Stderr, "  %s\n", w)
+			}
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "Deploy failed for %s\n", filePath)
 		if result.Message != "" {
