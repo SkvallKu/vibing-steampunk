@@ -22,6 +22,7 @@
 | `fix(rfc): pass rfc_cpic_streaming from .vsp.json to 'vsp rfc call'` | `vsp rfc call` брал из системы `.vsp.json` хост, логин и маршрут, но не `rfc_cpic_streaming`, поэтому с включённым флагом всё равно падал на телах больше 28000 байт. |
 | `fix(adt): resolve package from object metadata` | Если quickSearch не вернул пакет объекта, пакет берётся из метаданных самого объекта, а не считается отсутствующим. |
 | `feat(mcp): start the server for a .vsp.json system with -s` | Сервер игнорировал `-s`: RFC-туннель брал хост из системы `default`, а логин — из `SAP_USER`/`SAP_PASSWORD`, поэтому в одном проекте нельзя было поднять серверы на несколько систем или мандантов. Теперь `vsp -s <имя>` берёт подключение из этой системы. Включается явно: без `-s` ничего не меняется. |
+| `fix(mcp): GetTextElements and SetTextElements over ADT, not the ZADT_VSP WebSocket` | Оба инструмента ходили через WebSocket ZADT_VSP, а он подключается к порту ICM напрямую и маршрут SAProuter не использует; RFC-туннель же передаёт только ADT-запросы вида «запрос — ответ». Поэтому на системах, доступных только по RFC, они падали по таймауту даже с установленным ZADT_VSP. Теперь они работают через ресурс текстовых элементов ADT, как `texts_get`/`texts_set` и `vsp texts`. |
 
 ### Старые релизы (7.40, 7.50)
 
@@ -33,6 +34,7 @@
 | `fix(adt): read classes right on 7.40, and GetClassInfo on every release` | На 7.40 object structure класса помечает метод как `CLAS/OO` (на 7.50+ — `CLAS/OM`), поэтому `GetSource … method=` и правка метода отвечали «method not found». `GetClassInfo` на любом релизе возвращал пустые методы и атрибуты, а у final-классов — `isFinal: false`; теперь он читает коды типов и атрибуты final/abstract из структуры, а суперкласс и интерфейсы — из исходника. |
 | `fix(adt): table queries on releases with the classic SQL parser` | До 7.40 SP08 нет freestyle SQL, а data preview разбирает классический Open SQL: падают `SELECT a, b` и `ORDER BY a, b`, а также длинный запрос с `IN ('A', 'B')`. В запросе расставляются пробелы после запятых и внутри скобок, а при ответе 400 — один повтор без запятых между колонками. `RunQuery` (а с ним `GetSystemInfo` и `vsp query`) при отсутствии freestyle выполняет SELECT по одной таблице через data preview. |
 | `feat(adt): GetTable and GetStructure answer from DD02L/DD03L` | Исходник DDIC-таблиц ADT отдаёт только с 7.52. При ответе 404 описание собирается из DD02L/DD02T/DD03L в форме DDL-исходника, а первая строка говорит, что оно сгенерировано. |
+| `fix(adt): a release without the text elements resource is an error, not an empty text pool` | На 7.50 нет `/sap/bc/adt/textelements`: любой документ отвечает 404 «No application class found», и чтение считало это пустым видом текстов, так что программа со ста текстами читалась как пустая. Теперь такой 404 отличается от отсутствующего вида и выдаётся как ошибка «ресурса нет». |
 
 ## Настройка
 
@@ -122,6 +124,12 @@ go work init ./vibing-steampunk ./open-rfc-go
 - На 7.40 data preview не сообщает длину колонки и никогда не помечает ключевые поля,
   поэтому `GetTableContents` показывает там `Length: 0` и `IsKey: false`. Так отвечает
   SAP; сами данные верные.
+- Текстовые элементы на 7.50 (проверено), а значит и на 7.40, не читаются и не пишутся: ресурса для них в ADT
+  там нет, и теперь vsp так и отвечает, а не «текстов нет». Путь через RFC
+  (`RPY_PROGRAM_READ`, `RPY_TEXTELEMENTS_INSERT`) пока не сделан.
+- `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (MCP-инструмент; `vsp rfc call`
+  работает) и отладчик AMDP по-прежнему требуют WebSocket ZADT_VSP, до которого через
+  SAProuter не достучаться.
 
 ## Синхронизация с апстримом
 
