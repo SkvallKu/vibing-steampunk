@@ -245,7 +245,21 @@ func ParseABAPFile(filePath string) (*ABAPFileInfo, error) {
 	}
 
 	if info.ObjectName == "" {
+		if info.ObjectType == ObjectTypeProgram {
+			return nil, fmt.Errorf("could not parse object name from file (no REPORT or PROGRAM statement in the first 200 lines); " +
+				"an include has none: name the file <include>.incl.abap, or write it with WriteSource object_type=INCL")
+		}
 		return nil, fmt.Errorf("could not parse object name from file (expected CLASS/PROGRAM/INTERFACE/FUNCTION GROUP/FUNCTION statement in first 200 lines)")
+	}
+
+	// The file is deployed to the object its content names. When the file
+	// name says otherwise, one of them is wrong, and guessing which is how an
+	// include file with a REPORT line copied from its main program —
+	// ztest_kudr_2_cls1.prog.abap with REPORT ztest_kudr_2 — would have
+	// overwritten the main program.
+	if fromName := objectNameFromFilename(baseName); fromName != "" && fromName != info.ObjectName {
+		return nil, fmt.Errorf("the file name says %s and the source says %s; rename the file or correct the source, "+
+			"so that it is clear which object to write", fromName, info.ObjectName)
 	}
 
 	// Provide default description if none found
@@ -254,6 +268,32 @@ func ParseABAPFile(filePath string) (*ABAPFileInfo, error) {
 	}
 
 	return info, nil
+}
+
+// objectNameFromFilename is the object an abapGit-style file name stands
+// for: ZREPORT for zreport.prog.abap, /DMO/CL_X for #dmo#cl_x.clas.abap, the
+// module for zgroup.fugr.z_module.func.abap. A name that is not of that form
+// (another dot in it, or a type the content alone names) gives "", and is not
+// held against the content.
+func objectNameFromFilename(baseName string) string {
+	lower := strings.ToLower(baseName)
+	var name string
+	switch {
+	case strings.HasSuffix(lower, ".func.abap"):
+		name = baseName[:len(baseName)-len(".func.abap")]
+		if i := strings.Index(strings.ToLower(name), ".fugr."); i >= 0 {
+			name = name[i+len(".fugr."):]
+		}
+	case strings.HasSuffix(lower, ".prog.abap"), strings.HasSuffix(lower, ".intf.abap"),
+		strings.HasSuffix(lower, ".clas.abap"), strings.HasSuffix(lower, ".fugr.abap"):
+		name = baseName[:len(baseName)-len(".prog.abap")] // all four suffixes are ten characters
+	default:
+		return ""
+	}
+	if name == "" || strings.Contains(name, ".") {
+		return ""
+	}
+	return strings.ToUpper(strings.ReplaceAll(name, "#", "/"))
 }
 
 // parseFromContent detects object type by scanning file content

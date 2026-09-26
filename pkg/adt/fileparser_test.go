@@ -3,6 +3,7 @@ package adt
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -387,5 +388,53 @@ func TestParseABAPFile_HeaderTemplateIsNotADescription(t *testing.T) {
 	}
 	if info.Description != "DPL snapshot transfer: download / upload / transplant" {
 		t.Errorf("description %q", info.Description)
+	}
+}
+
+// ERH, 2026-09-21: an include file kept the REPORT line of its main program,
+// and deploy took the content's word for which object it was — the main
+// program, which the include's source would have replaced.
+func TestParseABAPFileRefusesAFileNameTheSourceContradicts(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, source string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	_, err := ParseABAPFile(write("ztest_kudr_2_cls1.prog.abap", "REPORT ztest_kudr_2.\nMETHOD run.\nENDMETHOD.\n"))
+	if err == nil || !strings.Contains(err.Error(), "ZTEST_KUDR_2_CLS1") || !strings.Contains(err.Error(), "the source says ZTEST_KUDR_2;") {
+		t.Errorf("a file named for one program and headed for another must be refused, got %v", err)
+	}
+
+	for name, source := range map[string]string{
+		"zreport.prog.abap":                   "REPORT zreport.\n",
+		"#dmo#cl_flight.clas.abap":            "CLASS /dmo/cl_flight DEFINITION PUBLIC.\nENDCLASS.\n",
+		"zif_demo.intf.abap":                  "INTERFACE zif_demo PUBLIC.\nENDINTERFACE.\n",
+		"zgroup.fugr.z_demo_module.func.abap": "FUNCTION z_demo_module.\nENDFUNCTION.\n",
+		"backup.zreport.prog.abap":            "REPORT zreport.\n", // not an abapGit name: the content decides
+	} {
+		if _, err := ParseABAPFile(write(name, source)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	_, err = ParseABAPFile(write("zgroup.fugr.z_demo_module.func.abap", "FUNCTION z_other_module.\nENDFUNCTION.\n"))
+	if err == nil || !strings.Contains(err.Error(), "Z_DEMO_MODULE") {
+		t.Errorf("a module file must name the module it holds, got %v", err)
+	}
+}
+
+// An include has no REPORT line; the error says how an include is written.
+func TestParseABAPFileSaysHowToWriteAnInclude(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ztest_kudr_2_cls1.prog.abap")
+	if err := os.WriteFile(path, []byte("METHOD run.\nENDMETHOD.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ParseABAPFile(path)
+	if err == nil || !strings.Contains(err.Error(), ".incl.abap") || !strings.Contains(err.Error(), "object_type=INCL") {
+		t.Errorf("got %v", err)
 	}
 }
