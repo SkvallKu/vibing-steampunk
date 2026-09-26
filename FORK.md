@@ -24,6 +24,11 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(mcp): SearchObject that finds nothing answers [], not null` | An empty result was serialized as `null`. |
 | `fix(adt): GetInstalledComponents reads the Atom feed SAP answers with` | `/sap/bc/adt/system/components` answers with an Atom feed (7.40, 7.50), and the tool always failed with `expected element type <components> but have <feed>`. Each entry is read as component, release, SP level, support package (new field `package`) and description. |
 | `fix(adt): vsp deploy writes a source that has warnings only` | Every syntax check message counted as an error, so a warning ("redundant conversion") stopped the deploy, and on create left an empty object behind. As in `WriteSource`, only severity E, A and X stop it; warnings are returned and printed. |
+| `fix(adt): wrapSQL breaks lines with CR LF` | A freestyle statement longer than 255 characters is wrapped, but with a bare LF, and the service splits lines at CR LF only: it failed with "more than 255 characters in line 1" (7.50). Lines are broken with CR LF, and so is a line break the caller wrote. |
+| `fix(saprfc): the RFC tunnel survives GENERATE_SUBPOOL_DIR_FULL` | The tunnel keeps one ABAP session, and each data preview query generates a temporary subroutine pool in it; after some thirty-six queries every query dumped until vsp restarted. A runtime error now drops (and closes) the connection, and that one dump — it happens before the query runs — is retried once on a fresh one. |
+| `fix(adt): read a class include whose name is exactly thirty characters` | A thirty-character class name leaves no `=` padding (`/IWFND/CL_SODATA_POST_PRO_XLSXCM001`), and such an include was read as a program. |
+| `fix(adt): function groups in a namespace` | The pool of `/BEV1/EM0` is `/BEV1/SAPLEM0` and its includes `/BEV1/LEM0…`; the prefixes were put before the namespace, so namespaced groups were not recognised and their modules' callees were not found. |
+| `fix(mcp): find a function module by its URI, whatever the logon language` | `GetCallersOf` and the call graph with `object_type=FUNC` compared the search hit's name, which a Russian logon gets as "BAL_MSG_DISPLAY_ABAP (Функциональный модуль)"; the module was reported as missing. The name is taken from the URI. |
 
 ### Older releases (7.40, 7.50)
 
@@ -39,6 +44,9 @@ on its own, so upstream can take any of them separately.
 | `fix(adt): a line break in a data preview query is white space on 7.40 too` | 7.40 SP06 does not take a line break for white space: in `SELECT *\nFROM dd03l\nWHERE …` the table name and `WHERE` read as one name. A line break or tab outside quotes becomes a blank. |
 | `fix(adt): note a 100-row answer to a large data preview request` | 7.40 SP06 data preview answers a request above a threshold between 5,000 and 9,999 rows with its default of 100 rows, no error and no total, so `all_rows` came back as 100 rows that looked complete. Such a result now carries a `Note`: it may not be all of it, ask for at most 5,000. |
 | `fix(adt): report why a data preview failed, not the commas it retried without` | When the retry without commas failed too, the first attempt's error was returned — on 7.40 SP06 always the one about the commas ("explicit length specifications are necessary with types C, P, X and N in the OO context"), which hid the real fault, such as an unknown field. The retry's error now comes first. |
+| `fix(adt): data preview on 7.40 puts a blank before a comma too` | A long statement with `IN ( 'A', 'B' )` failed with 'Following "', '" a blank is required', depending on where the commas fell and on the digits in `max_rows`. 7.40's `CL_ADT_DP_OPEN_SQL_HANDLER` cuts a statement of 255 characters or more into lines before tokens and starts the last line one character early; when that token is a comma, the quote before it is doubled (7.50 has the line commented out). With a blank before every comma the doubled character is a blank. |
+| `feat(adt): who calls an object, from the cross-reference tables on 7.40` | 7.40 SP06 has no where-used list (`usageReferences` answers 404), so `GetCallersOf`, the callers call graph and dump impact failed. On a 404 they read CROSS, WBCROSSGT and D010INC, with TFDIR, TLIBG, TRDIR and TADIR for the owning object and package; the answer names this source and its caveats, and says which table could not be read or was cut at its row limit. `GetCallersOf` also takes `TABL`, `DTEL`, `TTYP`. |
+| `feat(adt): where-used falls back to the tables on its conversion 500 too` | On 7.50 the where-used list answers 500 "Error while converting object references" for tables and function modules that SE84 answers; that 500 alone also goes to the tables, and `source` says why. |
 
 ## Configuration
 
@@ -134,6 +142,7 @@ go work init ./vibing-steampunk ./open-rfc-go
 - `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (the MCP tool; `vsp rfc call`
   works) and the AMDP debugger still need the ZADT_VSP WebSocket, which cannot be
   reached through a SAProuter.
+- Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: a declaration of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller has no method; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
 
 ## Syncing with upstream
 
