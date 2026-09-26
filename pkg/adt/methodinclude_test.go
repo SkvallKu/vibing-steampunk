@@ -1,6 +1,9 @@
 package adt
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // The suffix is base 36: CL_DEP_TREE has CM00A to CM00Z, and TMDIR gives
 // CM00Z's method index as 35, on 7.40 and 7.50. Hexadecimal would stop at
@@ -58,5 +61,36 @@ func TestASectionIsReportedRatherThanDropped(t *testing.T) {
 	unresolved := MethodInclude{Class: "ZCL_DEMO", Index: 3}
 	if got := unresolved.Qualified(); got != "ZCL_DEMO" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// Every pairing of a chunk's classes and indices has to fit the rows data
+// preview answers faithfully, or TMDIR would come back short without saying.
+func TestTMDIRChunksStayWithinTheRowLimit(t *testing.T) {
+	wanted := map[string]map[int]string{}
+	var classes []string
+	for i := 0; i < 300; i++ {
+		class := fmt.Sprintf("ZCL_%03d", i)
+		classes = append(classes, class)
+		wanted[class] = map[int]string{}
+		for j := 0; j < 40; j++ {
+			wanted[class][(i+j)%90+1] = "x"
+		}
+	}
+	seen := 0
+	for _, chunk := range tmdirChunks(classes, wanted) {
+		indices := map[int]bool{}
+		for _, class := range chunk {
+			for idx := range wanted[class] {
+				indices[idx] = true
+			}
+		}
+		if len(chunk)*len(indices) > rowFallbackAbove {
+			t.Errorf("a chunk of %d classes and %d indices may bring more than %d rows", len(chunk), len(indices), rowFallbackAbove)
+		}
+		seen += len(chunk)
+	}
+	if seen != len(classes) {
+		t.Errorf("every class goes into a chunk: %d of %d", seen, len(classes))
 	}
 }

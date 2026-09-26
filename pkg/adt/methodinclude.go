@@ -3,6 +3,7 @@ package adt
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -45,16 +46,11 @@ type MethodInclude struct {
 }
 
 // splitClassInclude takes a class-pool include apart. The name is padded with
-// '=' to a fixed width and the last characters name the section.
+// '=' to a fixed width and the last characters name the section; a name of the
+// full thirty characters has no padding at all.
 func splitClassInclude(include string) (class, section string, ok bool) {
-	inc := strings.TrimSpace(strings.ToUpper(include))
-	i := strings.Index(inc, "=")
-	if i <= 0 {
-		return "", "", false
-	}
-	class = inc[:i]
-	section = strings.TrimLeft(inc[i:], "=")
-	if class == "" || section == "" {
+	class, section, ok = classPoolOf(strings.ToUpper(include))
+	if !ok || section == "" {
 		return "", "", false
 	}
 	return class, section, true
@@ -81,12 +77,19 @@ func methodIndexFromSection(section string) (int, bool) {
 
 // DecodeMethodIncludes resolves class-pool includes to the methods they hold.
 //
-// Includes are grouped by class so a class costs one query however many of its
-// methods appear — a cross-reference sweep produces many rows from few classes,
-// and asking per row would turn one question into hundreds.
+// TMDIR is read for many classes at once, CLASSNAME IN and METHODINDX IN
+// together — a cross-reference sweep produces many rows from few classes, and
+// asking per class would cost a data preview query each, which a 7.40 session
+// can afford only a few dozen of. A chunk is sized so that every pairing of its
+// classes and indices fits the rows data preview answers faithfully; the rows
+// that come back are more than needed, never fewer.
+//
+// An include whose method could not be read keeps its class and index, and
+// the error says which query was lost.
 func (c *Client) DecodeMethodIncludes(ctx context.Context, includes []string) (map[string]MethodInclude, error) {
 	out := make(map[string]MethodInclude, len(includes))
 	wanted := map[string]map[int]string{} // class → index → include
+	var classes []string
 
 	for _, inc := range includes {
 		class, section, ok := splitClassInclude(inc)
@@ -103,27 +106,38 @@ func (c *Client) DecodeMethodIncludes(ctx context.Context, includes []string) (m
 		entry.Index = idx
 		entry.Section = ""
 		out[inc] = entry
+		if checkSQLLiteral(class) != nil {
+			continue
+		}
 		if wanted[class] == nil {
 			wanted[class] = map[int]string{}
+			classes = append(classes, class)
 		}
 		wanted[class][idx] = inc
 	}
-	if len(wanted) == 0 {
-		return out, nil
-	}
 
-	for class, byIndex := range wanted {
-		if err := checkSQLLiteral(class); err != nil {
+	var errs []error
+	for _, chunk := range tmdirChunks(classes, wanted) {
+		indices := map[int]bool{}
+		for _, class := range chunk {
+			for idx := range wanted[class] {
+				indices[idx] = true
+			}
+		}
+		var quoted []string
+		for idx := range indices {
+			quoted = append(quoted, fmt.Sprintf("%05d", idx))
+		}
+		sort.Strings(quoted)
+		rows, err := c.RunQuery(ctx,
+			"SELECT CLASSNAME, METHODINDX, METHODNAME FROM TMDIR WHERE CLASSNAME IN ( "+sqlInList(chunk)+
+				" ) AND METHODINDX IN ( "+sqlInList(quoted)+" )",
+			len(chunk)*len(indices))
+		if err != nil {
+			errs = append(errs, err)
 			continue
 		}
-		rows, err := c.RunQuery(ctx,
-			fmt.Sprintf("SELECT CLASSNAME, METHODINDX, METHODNAME FROM TMDIR WHERE CLASSNAME = '%s'", class),
-			5000)
-		if err != nil || rows == nil {
-			// The class stays decoded as far as it went: caller sees the class
-			// and the index, and no method name. That is less than we wanted
-			// and more than nothing, and it does not pretend the method is
-			// absent.
+		if rows == nil {
 			continue
 		}
 		for _, row := range rows.Rows {
@@ -131,7 +145,7 @@ func (c *Client) DecodeMethodIncludes(ctx context.Context, includes []string) (m
 			if convErr != nil {
 				continue
 			}
-			inc, ok := byIndex[idx]
+			inc, ok := wanted[strings.ToUpper(strings.TrimSpace(cell(row, "CLASSNAME")))][idx]
 			if !ok {
 				continue
 			}
@@ -144,7 +158,70 @@ func (c *Client) DecodeMethodIncludes(ctx context.Context, includes []string) (m
 			out[inc] = entry
 		}
 	}
+	if len(errs) > 0 {
+		return out, fmt.Errorf("%s", joinErrors(errs))
+	}
 	return out, nil
+}
+
+// tmdirChunks groups classes so that each group's classes times its distinct
+// indices stays within the rows data preview answers faithfully, and its names
+// within one IN list. One class alone always makes a group.
+func tmdirChunks(classes []string, wanted map[string]map[int]string) [][]string {
+	var out [][]string
+	var cur []string
+	indices := map[int]bool{}
+	for _, class := range classes {
+		next := map[int]bool{}
+		for idx := range indices {
+			next[idx] = true
+		}
+		for idx := range wanted[class] {
+			next[idx] = true
+		}
+		if len(cur) > 0 && ((len(cur)+1)*len(next) > rowFallbackAbove || len(cur) == xrefInChunk || len(next) > xrefInChunk) {
+			out = append(out, cur)
+			cur, next = nil, map[int]bool{}
+			for idx := range wanted[class] {
+				next[idx] = true
+			}
+		}
+		cur = append(cur, class)
+		indices = next
+	}
+	if len(cur) > 0 {
+		out = append(out, cur)
+	}
+	return out
+}
+
+// Where names the part of the class an include holds, as the where-used list
+// does: the method, or which section when it is not one.
+func (m MethodInclude) Where() string {
+	if m.Method != "" {
+		return m.Method
+	}
+	switch m.Section {
+	case "CU", "IU":
+		return "public section"
+	case "CO":
+		return "protected section"
+	case "CI":
+		return "private section"
+	case "CCDEF":
+		return "local definitions"
+	case "CCIMP":
+		return "local implementations"
+	case "CCMAC":
+		return "macros"
+	case "CCAU":
+		return "test classes"
+	case "":
+		// A method whose name TMDIR did not give: the include is still a place
+		// to look.
+		return m.Include
+	}
+	return m.Section
 }
 
 // Qualified names the thing an include holds, as a person would say it.
