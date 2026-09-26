@@ -72,7 +72,7 @@ func (s *Server) registerCRUDTools(shouldRegister func(string) bool) {
 			),
 			mcp.WithString("description",
 				mcp.Required(),
-				mcp.Description("Object description"),
+				mcp.Description("Object description. SAP limits its length: PROG/P and PROG/I 70 characters, CLAS/OC and INTF/OI 60, FUGR/F 40, FUGR/FF 74"),
 			),
 			mcp.WithString("package_name",
 				mcp.Required(),
