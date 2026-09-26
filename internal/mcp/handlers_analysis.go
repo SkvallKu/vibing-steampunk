@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -302,8 +303,11 @@ func (s *Server) callGraphObjectURI(ctx context.Context, request mcp.CallToolReq
 		if err != nil {
 			return "", fmt.Errorf("looking up function module %s: %v", objName, err)
 		}
+		// Matched on the URI, not on Name: a Russian logon gets
+		// "BAL_MSG_DISPLAY_ABAP (Функциональный модуль)" there.
 		for _, r := range results {
-			if strings.EqualFold(r.Name, objName) && strings.Contains(r.URI, "/fmodules/") {
+			_, module, ok := strings.Cut(r.URI, "/fmodules/")
+			if unescaped, err := url.PathUnescape(module); ok && err == nil && strings.EqualFold(unescaped, objName) {
 				return r.URI, nil
 			}
 		}
