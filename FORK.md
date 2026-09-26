@@ -29,6 +29,7 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(adt): read a class include whose name is exactly thirty characters` | A thirty-character class name leaves no `=` padding (`/IWFND/CL_SODATA_POST_PRO_XLSXCM001`), and such an include was read as a program. |
 | `fix(adt): function groups in a namespace` | The pool of `/BEV1/EM0` is `/BEV1/SAPLEM0` and its includes `/BEV1/LEM0…`; the prefixes were put before the namespace, so namespaced groups were not recognised and their modules' callees were not found. |
 | `fix(mcp): find a function module by its URI, whatever the logon language` | `GetCallersOf` and the call graph with `object_type=FUNC` compared the search hit's name, which a Russian logon gets as "BAL_MSG_DISPLAY_ABAP (Функциональный модуль)"; the module was reported as missing. The name is taken from the URI. |
+| `fix(adt): GetObjectStructure answers for more than classes` | Every name was read as a class, so a function group answered 400 "class does not exist" and a form an ADT error. Classes still use their objectstructure; interfaces, programs, function groups and forms (SFPF, SFPI) are read from the repository node structure, grouped by kind with each component's URI. `object_type` is optional: without it the name is looked up. Other types are refused, since for a table the node structure lists unrelated objects. |
 
 ### Older releases (7.40, 7.50)
 

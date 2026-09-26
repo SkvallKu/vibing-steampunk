@@ -31,6 +31,7 @@
 | `fix(adt): read a class include whose name is exactly thirty characters` | У класса с именем ровно 30 символов нет заполнения `=` (`/IWFND/CL_SODATA_POST_PRO_XLSXCM001`), и такой include читался как программа. |
 | `fix(adt): function groups in a namespace` | Пул группы `/BEV1/EM0` — `/BEV1/SAPLEM0`, её include — `/BEV1/LEM0…`; префиксы ставились перед пространством имён, поэтому такие группы не распознавались, а вызываемые их модулей не находились. |
 | `fix(mcp): find a function module by its URI, whatever the logon language` | `GetCallersOf` и граф вызовов с `object_type=FUNC` сравнивали имя из поиска, а при русском логоне оно приходит как «BAL_MSG_DISPLAY_ABAP (Функциональный модуль)», и модуль считался отсутствующим. Имя берётся из URI. |
+| `fix(adt): GetObjectStructure answers for more than classes` | Любое имя читалось как класс, поэтому группа функций отвечала 400 «класс не существует», а форма — ошибкой ADT. Классы по-прежнему читаются через objectstructure; интерфейсы, программы, группы функций и формы (SFPF, SFPI) — из repository node structure, с группировкой по видам и URI каждого компонента. `object_type` необязателен: без него имя ищется в репозитории. Остальные типы отклоняются: для таблицы node structure перечисляет посторонние объекты. |
 
 ### Старые релизы (7.40, 7.50)
 
