@@ -247,3 +247,63 @@ func TestIsRouterNotFound(t *testing.T) {
 		}
 	}
 }
+
+const discoveryTablesStandIn = `<app:service xmlns:app="http://www.w3.org/2007/app">
+<app:workspace><app:collection href="/sap/bc/adt/ddic/structures"/></app:workspace>
+<app:workspace><app:collection href="/sap/bc/adt/zvsp/ddic/tables"/></app:workspace>
+</app:service>`
+
+// An activation names its objects in the body. Once a request of this client
+// has been turned away by the router, the table URI in the body is the
+// stand-in's; before that the discovery document is not even asked for.
+func TestActivationNamesTheStandInOnceItIsKnown(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []string
+	discoveries := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		switch p := strings.ToLower(r.URL.Path); {
+		case p == "/sap/bc/adt/discovery":
+			mu.Lock()
+			discoveries++
+			mu.Unlock()
+			w.Write([]byte(discoveryTablesStandIn))
+		case p == "/sap/bc/adt/activation":
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			bodies = append(bodies, string(b))
+			mu.Unlock()
+			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><chkl:messages xmlns:chkl="http://www.sap.com/abapxml/checklist"/>`))
+		case strings.HasPrefix(p, "/sap/bc/adt/ddic/tables"):
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("No suitable resource found"))
+		case strings.HasPrefix(p, "/sap/bc/adt/zvsp/ddic/tables"):
+			w.Write([]byte("define table zdemo {}"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+	ctx := context.Background()
+
+	if _, err := c.Activate(ctx, "/sap/bc/adt/programs/programs/zdemo", "ZDEMO"); err != nil {
+		t.Fatal(err)
+	}
+	if discoveries != 0 {
+		t.Fatalf("an activation alone must not read the discovery document")
+	}
+	if _, err := c.GetTable(ctx, "ZDEMO"); err != nil {
+		t.Fatalf("GetTable: %v", err)
+	}
+	if _, err := c.Activate(ctx, "/sap/bc/adt/ddic/tables/zdemo", "ZDEMO"); err != nil {
+		t.Fatal(err)
+	}
+	last := bodies[len(bodies)-1]
+	if !strings.Contains(last, `adtcore:uri="/sap/bc/adt/zvsp/ddic/tables/zdemo"`) {
+		t.Errorf("the activation must name the stand-in: %s", last)
+	}
+	if !strings.Contains(bodies[0], `adtcore:uri="/sap/bc/adt/programs/programs/zdemo"`) {
+		t.Errorf("a standard object keeps its URI: %s", bodies[0])
+	}
+}

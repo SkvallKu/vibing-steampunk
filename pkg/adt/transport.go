@@ -190,7 +190,7 @@ func (c *Client) GetTransportInfo(ctx context.Context, objectURL string, devClas
       <URI>%s</URI>
     </DATA>
   </asx:values>
-</asx:abap>`, devClass, objectURL)
+</asx:abap>`, devClass, c.FallbackPathIfKnown(ctx, objectURL))
 
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/cts/transportchecks", &RequestOptions{
 		Method:      http.MethodPost,

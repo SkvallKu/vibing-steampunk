@@ -53,6 +53,15 @@ var zclVspAdtPkgResource string
 //go:embed zcl_vsp_adt_pkg_feature.clas.abap
 var zclVspAdtPkgFeature string
 
+//go:embed zcl_vsp_adt_util.clas.abap
+var zclVspAdtUtil string
+
+//go:embed zcl_vsp_adt_tabl_resource.clas.abap
+var zclVspAdtTablResource string
+
+//go:embed zcl_vsp_adt_tabl_feature.clas.abap
+var zclVspAdtTablFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -79,6 +88,9 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_TXT_FEATURE", zclVspAdtTxtFeature, "vsp ADT fallback: text elements feature"},
 		{"CLAS", "ZCL_VSP_ADT_PKG_RESOURCE", zclVspAdtPkgResource, "vsp ADT fallback: packages"},
 		{"CLAS", "ZCL_VSP_ADT_PKG_FEATURE", zclVspAdtPkgFeature, "vsp ADT fallback: packages feature"},
+		{"CLAS", "ZCL_VSP_ADT_UTIL", zclVspAdtUtil, "vsp ADT fallback: shared helpers"},
+		{"CLAS", "ZCL_VSP_ADT_TABL_RESOURCE", zclVspAdtTablResource, "vsp ADT fallback: database tables"},
+		{"CLAS", "ZCL_VSP_ADT_TABL_FEATURE", zclVspAdtTablFeature, "vsp ADT fallback: tables feature"},
 	}
 }
 
