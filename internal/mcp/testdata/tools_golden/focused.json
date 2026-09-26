@@ -3102,7 +3102,7 @@
       "inputSchema": {
         "properties": {
           "description": {
-            "description": "Object description (required for create mode)",
+            "description": "Object description (required for create mode). SAP limits its length: PROG and INCL 70 characters, CLAS and INTF 60",
             "type": "string"
           },
           "expected_source_hash": {

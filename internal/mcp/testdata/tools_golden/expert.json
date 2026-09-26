@@ -688,7 +688,7 @@
       "inputSchema": {
         "properties": {
           "description": {
-            "description": "Program description",
+            "description": "Program description (up to 70 characters)",
             "type": "string"
           },
           "package_name": {
@@ -795,7 +795,7 @@
             "type": "string"
           },
           "description": {
-            "description": "Class description",
+            "description": "Class description (up to 60 characters)",
             "type": "string"
           },
           "package_name": {
@@ -899,7 +899,7 @@
             "type": "string"
           },
           "description": {
-            "description": "Object description",
+            "description": "Object description. SAP limits its length: PROG/P and PROG/I 70 characters, CLAS/OC and INTF/OI 60, FUGR/F 40, FUGR/FF 74",
             "type": "string"
           },
           "language": {
@@ -4898,7 +4898,7 @@
       "inputSchema": {
         "properties": {
           "description": {
-            "description": "Object description (required for create mode)",
+            "description": "Object description (required for create mode). SAP limits its length: PROG and INCL 70 characters, CLAS and INTF 60",
             "type": "string"
           },
           "expected_source_hash": {
