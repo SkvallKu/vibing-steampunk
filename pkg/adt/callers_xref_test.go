@@ -16,6 +16,7 @@ import (
 // tables. A table missing from tables is refused with 403.
 type xrefServer struct {
 	usageStatus int
+	usageBody   string // default: the status text
 	tables      map[string]string
 
 	mu      sync.Mutex
@@ -32,7 +33,11 @@ func (x *xrefServer) start(t *testing.T) *httptest.Server {
 		}
 		if strings.Contains(r.URL.Path, "usageReferences") {
 			w.WriteHeader(x.usageStatus)
-			w.Write([]byte("usage references: " + http.StatusText(x.usageStatus)))
+			body := x.usageBody
+			if body == "" {
+				body = "usage references: " + http.StatusText(x.usageStatus)
+			}
+			w.Write([]byte(body))
 			return
 		}
 		body, _ := io.ReadAll(r.Body)
@@ -182,6 +187,40 @@ func TestWhereUsedDoesNotFallBackOnOtherErrors(t *testing.T) {
 	}
 	if n := len(x.asked("WBCROSSGT")); n != 0 {
 		t.Errorf("the tables were asked %d times after a 403", n)
+	}
+}
+
+// The 500 ERH (7.50) answers for tables and function modules is the list's
+// own failure and goes to the tables; a 500 with anything else in it does not.
+func TestWhereUsedFallsBackOnTheReferencesConversion500Only(t *testing.T) {
+	const conversion = `<?xml version="1.0" encoding="utf-8"?><exc:exception xmlns:exc="http://www.sap.com/abapxml/types/communicationframework">` +
+		`<namespace id="com.sap.adt.ris"/><type id="ABAP References Resource Error"/>` +
+		`<message lang="EN">Error while converting object references</message><properties/></exc:exception>`
+	tables := map[string]string{
+		"WBCROSSGT": tableXML(col("INCLUDE", "ZREPORT"), col("NAME", "MARA")),
+		"TRDIR":     tableXML(col("NAME", "ZREPORT"), col("SUBC", "1")),
+		"TADIR":     tableXML(col("OBJECT"), col("OBJ_NAME"), col("DEVCLASS")),
+	}
+
+	x := &xrefServer{usageStatus: http.StatusInternalServerError, usageBody: conversion, tables: tables}
+	srv := x.start(t)
+	res, err := NewClient(srv.URL, "user", "pass").WhereUsedFull(context.Background(), "/sap/bc/adt/ddic/tables/mara")
+	srv.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Source != WhereUsedSourceXref || res.Why != WhereUsedWhyConversion || callerByName(res.Callers, "ZREPORT") == nil {
+		t.Errorf("the conversion 500 should be answered from the tables and say so, got %+v", res)
+	}
+
+	x = &xrefServer{usageStatus: http.StatusInternalServerError, tables: tables}
+	srv = x.start(t)
+	defer srv.Close()
+	if _, err := NewClient(srv.URL, "user", "pass").WhereUsedFull(context.Background(), "/sap/bc/adt/ddic/tables/mara"); err == nil {
+		t.Fatal("any other 500 must come back as an error")
+	}
+	if n := len(x.asked("WBCROSSGT")); n != 0 {
+		t.Errorf("the tables were asked %d times after a plain 500", n)
 	}
 }
 

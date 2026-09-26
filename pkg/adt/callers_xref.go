@@ -84,9 +84,10 @@ type WhereUsedResult struct {
 // WhereUsedFull asks the where-used list and, where the system does not have
 // it, the cross-reference tables.
 //
-// Only a 404 turns to the tables. Anything else — an authorisation failure,
-// a timeout, a 500 — is the list answering, badly, and a second source would
-// hide that the first one failed.
+// Only a 404 turns to the tables, and one 500 that is known to be the list's
+// own defect (isReferencesConversionError). Anything else — an authorisation
+// failure, a timeout, any other 500 — is the list answering, badly, and a
+// second source would hide that the first one failed.
 func (c *Client) WhereUsedFull(ctx context.Context, objectURI string) (*WhereUsedResult, error) {
 	refs, err := c.FindReferences(ctx, objectURI, 0, 0)
 	if err == nil {
@@ -99,6 +100,8 @@ func (c *Client) WhereUsedFull(ctx context.Context, objectURI string) (*WhereUse
 	switch {
 	case isNotFound(err):
 		why = WhereUsedWhyNoList
+	case isReferencesConversionError(err):
+		why = WhereUsedWhyConversion
 	default:
 		return nil, err
 	}
@@ -114,7 +117,22 @@ func (c *Client) WhereUsedFull(ctx context.Context, objectURI string) (*WhereUse
 const (
 	WhereUsedWhyNoList = "this system has no where-used list " +
 		"(/sap/bc/adt/repository/informationsystem/usageReferences answers 404)"
+	WhereUsedWhyConversion = "the where-used list failed on this object with its own error " +
+		"(500 \"Error while converting object references\", which 7.50 answers for tables and function modules)"
 )
+
+// isReferencesConversionError is the 500 the where-used list answers on 7.50
+// for tables (MARA, TVARVC) and function modules (BAL_MSG_DISPLAY_ABAP), while
+// classes, programs and includes work, and SE84 answers the same objects
+// fine. It is the list failing to build its answer, not the object or the
+// user, so the tables are a fair second source. Matched on the exception type
+// and its text together: any other 500 still stops, as it should.
+func isReferencesConversionError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "status 500") &&
+		strings.Contains(msg, "ABAP References Resource Error") &&
+		strings.Contains(msg, "Error while converting object references")
+}
 
 // callerTarget is what the tables are searched for.
 type callerTarget struct {
