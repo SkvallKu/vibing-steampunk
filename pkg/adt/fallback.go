@@ -89,6 +89,22 @@ func isDiscoveryPath(path string) bool {
 	return strings.HasPrefix(path, "/sap/bc/adt/discovery") || strings.HasPrefix(path, "/sap/bc/adt/core/discovery")
 }
 
+// FallbackPathIfKnown is FallbackPath for a URI named inside a request body,
+// such as the object references of an activation: the request itself goes
+// to a standard path and cannot be retried at the stand-in. It rewrites only
+// when this client has already read the discovery document — which it does
+// the first time the router turns a request away — and so costs a system
+// without stand-ins nothing.
+func (c *Client) FallbackPathIfKnown(ctx context.Context, path string) string {
+	c.fallback.mu.Lock()
+	loaded := c.fallback.loaded
+	c.fallback.mu.Unlock()
+	if !loaded {
+		return path
+	}
+	return c.FallbackPath(ctx, path)
+}
+
 func (r *fallbackRoutes) load(ctx context.Context, c *Client) bool {
 	res, err := c.transport.Request(ctx, "/sap/bc/adt/discovery", &RequestOptions{
 		Method: http.MethodGet,

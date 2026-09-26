@@ -73,7 +73,7 @@ func (c *Client) CheckTransport(ctx context.Context, objectURL, devClass, operat
       <URI>%s</URI>
     </DATA>
   </asx:values>
-</asx:abap>`, escapeXMLAttr(strings.ToUpper(devClass)), operation, escapeXMLAttr(objectURL))
+</asx:abap>`, escapeXMLAttr(strings.ToUpper(devClass)), operation, escapeXMLAttr(c.FallbackPathIfKnown(ctx, objectURL)))
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/cts/transportchecks", &RequestOptions{
 		Method:      http.MethodPost,
 		Body:        []byte(body),

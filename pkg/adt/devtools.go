@@ -35,6 +35,17 @@ const SyntaxCheckNotPerformed = "syntax check not performed, the source was not 
 func (c *Client) SyntaxCheck(ctx context.Context, objectURL string, content string) ([]SyntaxCheckResult, error) {
 	body, err := c.postCheckRun(ctx, objectURL, content)
 	if err != nil {
+		// An object served by an ADT fallback point (fallback.go) has no URI
+		// mapping the check run knows; the stand-in parses the source itself
+		// when it is written and refuses what does not parse. Say that the
+		// check did not run rather than fail the write that would check it.
+		if strings.Contains(err.Error(), "No URI-Mapping defined") && c.FallbackPath(ctx, objectURL) != objectURL {
+			return []SyntaxCheckResult{{
+				URI:      objectURL,
+				Severity: "W",
+				Text:     SyntaxCheckNotPerformed + "the object is served by an ADT fallback point, which checks the source when it is written",
+			}}, nil
+		}
 		return nil, fmt.Errorf("syntax check failed: %w", err)
 	}
 	return parseSyntaxCheckResults(body)
@@ -206,7 +217,7 @@ func (c *Client) Activate(ctx context.Context, objectURL string, objectName stri
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core">
   <adtcore:objectReference adtcore:uri="%s" adtcore:name="%s"/>
-</adtcore:objectReferences>`, objectURL, objectName)
+</adtcore:objectReferences>`, c.FallbackPathIfKnown(ctx, objectURL), objectName)
 
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/activation?method=activate&preauditRequested=true", &RequestOptions{
 		Method:      http.MethodPost,
@@ -657,7 +668,7 @@ func (c *Client) ActivateMultiple(ctx context.Context, objects []ObjectRef) (*Ac
 	sb.WriteString("<adtcore:objectReferences xmlns:adtcore=\"http://www.sap.com/adt/core\">\n")
 	for _, obj := range objects {
 		sb.WriteString(fmt.Sprintf("  <adtcore:objectReference adtcore:uri=\"%s\" adtcore:name=\"%s\"/>\n",
-			obj.URI, obj.Name))
+			c.FallbackPathIfKnown(ctx, obj.URI), obj.Name))
 	}
 	sb.WriteString("</adtcore:objectReferences>")
 
