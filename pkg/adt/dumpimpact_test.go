@@ -21,6 +21,28 @@ func TestUnitForFrame(t *testing.T) {
 			ok:    true,
 		},
 		{
+			// Thirty characters fill the padding, so there is no '=' to
+			// find: seen live as a where-used caller on 7.50.
+			name:  "a class of exactly thirty characters has no padding",
+			frame: DumpFrame{Type: "METHOD", Program: "/IWFND/CL_SODATA_POST_PRO_XLSXCM001"},
+			want:  repoUnit{"/IWFND/CL_SODATA_POST_PRO_XLSX", "CLAS", "/sap/bc/adt/oo/classes/%2Fiwfnd%2Fcl_sodata_post_pro_xlsx"},
+			ok:    true,
+		},
+		{
+			name:  "its pool too",
+			frame: DumpFrame{Type: "METHOD", Program: "CL_SALV_GUI_GRID_CONTROLER_IDACP"},
+			want:  repoUnit{"CL_SALV_GUI_GRID_CONTROLER_IDA", "CLAS", "/sap/bc/adt/oo/classes/cl_salv_gui_grid_controler_ida"},
+			ok:    true,
+		},
+		{
+			// A program may be forty characters long; its tail is not a
+			// class pool section, so it stays a program.
+			name:  "a long program name is not a class",
+			frame: DumpFrame{Type: "EVENT", Program: "ZREPORT_WITH_A_VERY_LONG_NAME_XYZ"},
+			want:  repoUnit{"ZREPORT_WITH_A_VERY_LONG_NAME_XYZ", "PROG", "/sap/bc/adt/programs/programs/zreport_with_a_very_long_name_xyz"},
+			ok:    true,
+		},
+		{
 			name:  "interface pool is an interface, not a class",
 			frame: DumpFrame{Type: "METHOD", Program: "ZIF_DEMO_SERVICE=====IP"},
 			want:  repoUnit{"ZIF_DEMO_SERVICE", "INTF", "/sap/bc/adt/oo/interfaces/zif_demo_service"},
