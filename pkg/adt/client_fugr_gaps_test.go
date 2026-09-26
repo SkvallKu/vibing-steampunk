@@ -91,3 +91,71 @@ func TestAFullyReadFunctionGroupReportsNoGaps(t *testing.T) {
 		t.Fatalf("the concatenation should span includes and modules:\n%s", source)
 	}
 }
+
+// 7.40 and 7.50 answer 404 for a group's objectstructure, and every caller of
+// GetFunctionGroupAllSources — transport analysis, the CR audit — lost the
+// group. The node structure lists the same sources.
+func TestFunctionGroupSourcesWithoutObjectStructure(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		ok     bool
+	}{{http.StatusNotFound, true}, {http.StatusInternalServerError, false}} {
+		var nodestructure int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("x-csrf-token", "test-token")
+			switch {
+			case r.Method == http.MethodHead:
+			case strings.HasSuffix(r.URL.Path, "/objectstructure"):
+				w.WriteHeader(tc.status)
+			case strings.HasSuffix(r.URL.Path, "/repository/nodestructure"):
+				nodestructure++
+				w.Write([]byte(nodeStructureXML))
+			default:
+				w.Write([]byte("* source of " + r.URL.Path + "\n"))
+			}
+		}))
+		source, missed, err := NewClient(srv.URL, "user", "pass").GetFunctionGroupAllSources(context.Background(), "ZDEMO_FG")
+		srv.Close()
+		if !tc.ok {
+			if err == nil || nodestructure != 0 {
+				t.Errorf("a %d is the resource failing, not missing: err=%v, node structure asked %d times", tc.status, err, nodestructure)
+			}
+			continue
+		}
+		if err != nil || len(missed) != 0 {
+			t.Fatalf("err=%v missed=%v", err, missed)
+		}
+		for _, want := range []string{
+			"/functions/groups/zdemo_fg/source/main",
+			"/includes/lzdemo_fgtop/source/main",
+			"/fmodules/zdemo_fm_one/source/main",
+			"/fmodules/zdemo_fm_two/source/main",
+		} {
+			if !strings.Contains(source, want) {
+				t.Errorf("%s is missing from the group's sources:\n%s", want, source)
+			}
+		}
+	}
+}
+
+func TestFunctionGroupNamesItsIncludes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		switch {
+		case r.Method == http.MethodHead:
+		case strings.HasSuffix(r.URL.Path, "/repository/nodestructure"):
+			w.Write([]byte(nodeStructureXML))
+		default:
+			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><group:abapFunctionGroup xmlns:group="http://www.sap.com/adt/functions/groups" xmlns:adtcore="http://www.sap.com/adt/core" adtcore:name="ZDEMO_FG" adtcore:type="FUGR/F"/>`))
+		}
+	}))
+	defer srv.Close()
+
+	fg, err := NewClient(srv.URL, "user", "pass").GetFunctionGroup(context.Background(), "zdemo_fg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fg.Functions) != 2 || len(fg.Includes) != 1 || fg.Includes[0].Name != "LZDEMO_FGTOP" {
+		t.Errorf("functions %+v, includes %+v", fg.Functions, fg.Includes)
+	}
+}

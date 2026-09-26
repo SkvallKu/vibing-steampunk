@@ -100,3 +100,43 @@ func TestFunctionModulesFromNothing(t *testing.T) {
 		t.Errorf("got %v, want nil for a group with no nodes", got)
 	}
 }
+
+// ERP-182: GetFunctionGroup named the modules and not the includes, and the
+// includes were in the same answer.
+func TestFunctionGroupIncludesFromNodes(t *testing.T) {
+	includes := functionGroupIncludesFromNodes(parseNodes(t))
+	if len(includes) != 1 || includes[0].Name != "LZDEMO_FGTOP" ||
+		includes[0].URI != "/sap/bc/adt/functions/groups/zdemo_fg/includes/lzdemo_fgtop" {
+		t.Errorf("includes = %+v; the header row is not one, the text-element program is not one", includes)
+	}
+}
+
+// The source URIs of a group read from the node structure: 7.40 gives an
+// include without /source/main, 7.50 with it; an include from elsewhere is a
+// program include in the group's context; a module needs /source/main.
+func TestFunctionGroupSourcesFromNodes(t *testing.T) {
+	nodes := []repositoryNode{
+		{ObjectType: "FUGR/I", ObjectName: "LW61VTOP", ObjectURI: "/sap/bc/adt/functions/groups/w61v/includes/lw61vtop"},
+		{ObjectType: "FUGR/I", ObjectName: "LW61VF01", ObjectURI: "/sap/bc/adt/functions/groups/w61v/includes/lw61vf01/source/main"},
+		{ObjectType: "FUGR/I", ObjectName: "SBALTYPE", ObjectURI: "/sap/bc/adt/programs/includes/sbaltype/source/main?context=%2fsap%2fbc%2fadt%2ffunctions%2fgroups%2fw61v"},
+		{ObjectType: "FUGR/FF", ObjectName: "BAPI_MATERIAL_AVAILABILITY", ObjectURI: "/sap/bc/adt/functions/groups/w61v/fmodules/bapi_material_availability"},
+		{ObjectType: "FUGR/PU", ObjectName: "ADD_MENGE", ObjectURI: "/sap/bc/adt/functions/groups/w61v/includes/lw61vf01/source/main#start=5,6"},
+		{ObjectType: "FUGR/I", ObjectName: "LW61VTOP", ObjectURI: "/sap/bc/adt/functions/groups/w61v/includes/lw61vtop#type=FUGR%2FI"},
+	}
+	want := []string{
+		"/sap/bc/adt/functions/groups/w61v/source/main",
+		"/sap/bc/adt/functions/groups/w61v/includes/lw61vtop/source/main",
+		"/sap/bc/adt/functions/groups/w61v/includes/lw61vf01/source/main",
+		"/sap/bc/adt/programs/includes/sbaltype/source/main?context=%2fsap%2fbc%2fadt%2ffunctions%2fgroups%2fw61v",
+		"/sap/bc/adt/functions/groups/w61v/fmodules/bapi_material_availability/source/main",
+	}
+	got := functionGroupSourcesFromNodes("W61V", nodes)
+	if len(got) != len(want) {
+		t.Fatalf("got %d URIs, want %d:\n%v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("URI %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

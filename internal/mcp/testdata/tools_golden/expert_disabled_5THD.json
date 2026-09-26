@@ -2027,7 +2027,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Retrieve ABAP Function Group source code",
+      "description": "Function group metadata with its function modules (Functions) and includes (Includes: the group's own L\u003cgroup\u003eTOP, L\u003cgroup\u003eF01, ... and the includes from elsewhere it pulls in). Read a source with GetSource",
       "inputSchema": {
         "properties": {
           "function_group": {
