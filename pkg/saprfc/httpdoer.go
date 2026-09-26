@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/oisee/open-rfc-go/rfc"
 	"github.com/oisee/vibing-steampunk/pkg/adt"
@@ -67,6 +69,13 @@ func (d *TunnelDoer) drop(bad *rfc.Client) {
 	defer d.mu.Unlock()
 	if d.client == bad {
 		d.client = nil
+		// Closed rather than forgotten: after a dump the session is still
+		// open on the server, and would stay there until it timed out.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = bad.Close(ctx)
+		}()
 	}
 }
 
@@ -101,12 +110,27 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	res, err := CallADT(ctx, c, ADTRequest{Method: req.Method, URI: uri, Headers: headers, Body: body})
+	adtReq := ADTRequest{Method: req.Method, URI: uri, Headers: headers, Body: body}
+	res, err := CallADT(ctx, c, adtReq)
 	if err != nil {
-		if errors.Is(err, rfc.ErrTransport) || errors.Is(err, rfc.ErrClosed) {
+		drop, retry := afterTunnelError(err)
+		if drop {
 			d.drop(c)
 		}
-		return nil, fmt.Errorf("RFC tunnel: %w", err)
+		if retry {
+			if c, err = d.conn(ctx); err != nil {
+				return nil, fmt.Errorf("RFC tunnel: %w", err)
+			}
+			res, err = CallADT(ctx, c, adtReq)
+			if err != nil {
+				if drop, _ := afterTunnelError(err); drop {
+					d.drop(c)
+				}
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("RFC tunnel: %w", err)
+		}
 	}
 
 	header := make(http.Header, len(res.Headers))
@@ -123,6 +147,35 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(bytes.NewReader(res.Body)),
 		Request:    req,
 	}, nil
+}
+
+// afterTunnelError decides what a failed call does to the connection.
+//
+// A transport failure or a closed client drops it, so that the next call
+// redials. So does an ABAP runtime error: a session that has dumped is not one
+// to keep sending requests into.
+//
+// One runtime error is also retried, once, on the fresh connection. The data
+// preview generates a temporary subroutine pool per query, the tunnel keeps one
+// ABAP session for all its calls, and a session holds only a few dozen of
+// them: past that every query dumps with GENERATE_SUBPOOL_DIR_FULL, "No
+// further temporary subroutine pools can be generated" — seen after some
+// thirty-six queries in one MCP session on 7.50. The dump happens while the
+// query is being generated, before it runs, so the request did nothing and
+// asking it again in a new session is safe. Any other dump may have happened
+// halfway through something, and is only reported.
+func afterTunnelError(err error) (drop, retry bool) {
+	if errors.Is(err, rfc.ErrTransport) || errors.Is(err, rfc.ErrClosed) {
+		return true, false
+	}
+	var abap *rfc.ABAPException
+	if errors.As(err, &abap) && abap.Kind == rfc.KindRuntime {
+		full := abap.RuntimeID == "GENERATE_SUBPOOL_DIR_FULL" ||
+			strings.Contains(abap.PlainText, "GENERATE_SUBPOOL_DIR_FULL") ||
+			strings.Contains(strings.ToLower(abap.PlainText), "subroutine pools")
+		return true, full
+	}
+	return false, false
 }
 
 // NewTunneledADTClient builds an adt.Client whose every HTTP call actually
