@@ -266,12 +266,7 @@ func unitForFrame(frame DumpFrame) (repoUnit, bool) {
 
 	// A class or interface pool: the name, padded with '=', then a two-letter
 	// pool suffix. IP and IU are the interface ones.
-	if i := strings.Index(program, "="); i > 0 {
-		name := strings.TrimRight(program[:i], "=")
-		suffix := strings.TrimLeft(program[i:], "=")
-		if name == "" {
-			return repoUnit{}, false
-		}
+	if name, suffix, ok := classPoolOf(program); ok {
 		if strings.HasPrefix(suffix, "IP") || strings.HasPrefix(suffix, "IU") {
 			return repoUnit{name, "INTF", "/sap/bc/adt/oo/interfaces/" + adtSegment(name)}, true
 		}
@@ -287,6 +282,37 @@ func unitForFrame(frame DumpFrame) (repoUnit, bool) {
 	}
 
 	return repoUnit{program, "PROG", "/sap/bc/adt/programs/programs/" + adtSegment(program)}, true
+}
+
+// classPoolOf splits a class or interface include into the object's name and
+// the section: ZCL_X=========================CM001 is ZCL_X and CM001.
+//
+// The name is padded with '=' to thirty characters, so a name of exactly
+// thirty has no '=' at all — /IWFND/CL_SODATA_POST_PRO_XLSXCM001 — and
+// looking for the '=' reads it as a program. Past thirty characters the tail
+// has to be a section a class pool has, since a program's own name can be up
+// to forty.
+func classPoolOf(include string) (name, section string, ok bool) {
+	include = strings.TrimSpace(include)
+	if i := strings.Index(include, "="); i > 0 {
+		name = strings.TrimRight(include[:i], "=")
+		return name, strings.TrimLeft(include[i:], "="), name != ""
+	}
+	const nameWidth = 30
+	if len(include) > nameWidth && isClassPoolSection(include[nameWidth:]) {
+		return include[:nameWidth], include[nameWidth:], true
+	}
+	return "", "", false
+}
+
+// isClassPoolSection recognises what follows the padded name of a class or
+// interface include.
+func isClassPoolSection(s string) bool {
+	switch s {
+	case "CP", "CU", "CO", "CI", "CT", "CS", "CCDEF", "CCIMP", "CCMAC", "CCAU", "IP", "IU":
+		return true
+	}
+	return len(s) == 5 && strings.HasPrefix(s, "CM")
 }
 
 // functionGroupOf recovers the group behind a function pool. The main pool is
