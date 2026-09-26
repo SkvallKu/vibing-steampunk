@@ -518,6 +518,12 @@ func (c *Client) runQueryRaw(ctx context.Context, sqlQuery string, maxRows int) 
 // token cut by that wrap — a literal, a column name — is a syntax error that
 // names half a word. Lines are broken at blanks outside quotes only, so the
 // statement means the same thing.
+//
+// The break is CR LF. The service splits the text into lines at CR LF only: a
+// bare LF stays inside the line as one more character, and a statement of
+// 270 characters broken with LF fails as "more than 255 characters in line 1"
+// (checked on 7.50 over the RFC tunnel, which passes the body through
+// unchanged). A line break the caller wrote is made CR LF too.
 func wrapSQL(query string) string {
 	const limit = 200
 	var out strings.Builder
@@ -540,7 +546,7 @@ func wrapSQL(query string) string {
 			}
 		}
 		if lineLen > 0 && lineLen+1+len(word) > limit {
-			out.WriteByte('\n')
+			out.WriteString("\r\n")
 			lineLen = 0
 		} else if lineLen > 0 {
 			out.WriteByte(' ')
@@ -553,14 +559,14 @@ func wrapSQL(query string) string {
 		switch query[i] {
 		case '\'':
 			inQuote = !inQuote
-		case ' ', '\n':
+		case ' ', '\r', '\n':
 			if inQuote {
 				continue
 			}
 			emit(query[start:i])
 			start = i + 1
 			if query[i] == '\n' {
-				out.WriteByte('\n')
+				out.WriteString("\r\n")
 				lineLen = 0
 			}
 		}
