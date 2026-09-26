@@ -60,12 +60,12 @@ func TestWrapSQL_BreaksAnINListWithoutBlanks(t *testing.T) {
 	}
 	q := "SELECT trkorr FROM e070 WHERE trkorr IN (" + strings.Join(lits, ",") + ")"
 	w := wrapSQL(q)
-	for n, line := range strings.Split(w, "\n") {
+	for n, line := range strings.Split(w, "\r\n") {
 		if len(line) > 200 {
 			t.Errorf("line %d is %d characters", n+1, len(line))
 		}
 	}
-	if strings.ReplaceAll(strings.ReplaceAll(w, "\n", ""), " ", "") != strings.ReplaceAll(q, " ", "") {
+	if strings.ReplaceAll(strings.ReplaceAll(w, "\r\n", ""), " ", "") != strings.ReplaceAll(q, " ", "") {
 		t.Error("wrapping changed more than blanks")
 	}
 }
