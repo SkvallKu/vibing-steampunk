@@ -23,8 +23,16 @@ const optionsLineLen = 72
 //   - The classic DATA output is a TAB512, so wide tables raise
 //     DATA_BUFFER_EXCEEDED. On that exception the call is retried with
 //     USE_ET_DATA_4_RETURN = 'X', which returns the rows in ET_DATA, whose line
-//     type is a STRING and therefore has no width limit.
-func ReadTable(ctx context.Context, client *rfc.Client, table, where string, fields []string, top int) ([]map[string]string, error) {
+//     type is a STRING and therefore has no width limit. Older releases (7.50
+//     among them) have no such parameter, and the answer is then to ask for
+//     fewer fields.
+//
+// A STRING or RAWSTRING column is beyond RFC_READ_TABLE on any release: it
+// dumps in an ASSIGN ... CASTING. Both dead ends are reported with the way
+// round them — data preview over ADT reads either table.
+//
+// No rows is an empty slice, not nil.
+func ReadTable(ctx context.Context, client rfcCaller, table, where string, fields []string, top int) ([]map[string]string, error) {
 	in := rfc.Params{"QUERY_TABLE": table, "DELIMITER": "|"}
 	if top > 0 {
 		in["ROWCOUNT"] = int64(top)
@@ -52,14 +60,17 @@ func ReadTable(ctx context.Context, client *rfc.Client, table, where string, fie
 	if err != nil {
 		var exc *rfc.ABAPException
 		if !errors.As(err, &exc) || exc.Key != "DATA_BUFFER_EXCEEDED" {
-			return nil, err
+			return nil, readTableError(table, err)
 		}
 		// The row is wider than the 512-byte DATA work area: ask for ET_DATA,
 		// whose line type is a STRING.
 		in["USE_ET_DATA_4_RETURN"] = "X"
 		r, err = client.Call(ctx, "RFC_READ_TABLE", in)
+		if errors.Is(err, rfc.ErrUnknownParameter) {
+			return nil, fmt.Errorf("a row of %s is wider than the 512 characters RFC_READ_TABLE returns, and this release has no ET_DATA to return it in: name fewer fields, or read the table with data preview (vsp query, GetTableContents)", table)
+		}
 		if err != nil {
-			return nil, err
+			return nil, readTableError(table, err)
 		}
 	}
 
@@ -74,7 +85,7 @@ func ReadTable(ctx context.Context, client *rfc.Client, table, where string, fie
 			rows, field = et, "LINE"
 		}
 	}
-	var out []map[string]string
+	out := []map[string]string{}
 	for _, dr := range rows {
 		parts := strings.Split(fmt.Sprint(dr[field]), "|")
 		row := map[string]string{}
@@ -86,6 +97,18 @@ func ReadTable(ctx context.Context, client *rfc.Client, table, where string, fie
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// readTableError explains the ASSIGN ... CASTING dump RFC_READ_TABLE ends in
+// on a STRING or RAWSTRING column, which names no column itself; other errors
+// pass through.
+func readTableError(table string, err error) error {
+	var exc *rfc.ABAPException
+	if errors.As(err, &exc) && exc.Kind == rfc.KindRuntime &&
+		(strings.Contains(exc.RuntimeID, "CASTING") || strings.Contains(exc.PlainText, "CASTING")) {
+		return fmt.Errorf("RFC_READ_TABLE dumped on %s, as it does on a STRING or RAWSTRING column: leave those out of the fields, or read the table with data preview (vsp query, GetTableContents): %w", table, err)
+	}
+	return err
 }
 
 // splitWhereClause breaks a WHERE clause into OPTIONS rows of at most 72

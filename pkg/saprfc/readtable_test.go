@@ -1,8 +1,13 @@
 package saprfc
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/oisee/open-rfc-go/rfc"
 )
 
 func TestSplitWhereClause(t *testing.T) {
@@ -79,5 +84,64 @@ func TestSplitWhereClauseRejectsOversizedToken(t *testing.T) {
 	where := "BNAME = '" + strings.Repeat("X", 80) + "' OR MANDT = '001'"
 	if _, err := splitWhereClause(where); err == nil {
 		t.Fatal("expected an error for a token longer than the OPTIONS line")
+	}
+}
+
+// fakeReadTable answers RFC_READ_TABLE with errs in turn, then an empty result,
+// and keeps what it was asked.
+type fakeReadTable struct {
+	errs  []error
+	calls []rfc.Params
+}
+
+func (f *fakeReadTable) Call(_ context.Context, _ string, in rfc.Params) (rfc.Result, error) {
+	cp := rfc.Params{}
+	for k, v := range in {
+		cp[k] = v
+	}
+	f.calls = append(f.calls, cp)
+	if len(f.errs) > 0 {
+		err := f.errs[0]
+		f.errs = f.errs[1:]
+		return rfc.Result{}, err
+	}
+	return rfc.Result{}, nil
+}
+
+func TestReadTableNoRowsIsEmptyNotNil(t *testing.T) {
+	rows, err := ReadTable(context.Background(), &fakeReadTable{}, "TFDIR", "FUNCNAME = 'Z_NONE'", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows == nil || len(rows) != 0 {
+		t.Fatalf("rows = %#v, want an empty slice", rows)
+	}
+}
+
+// On 7.50 a wide row raises DATA_BUFFER_EXCEEDED and RFC_READ_TABLE has no
+// USE_ET_DATA_4_RETURN to retry with.
+func TestReadTableWideRowWithoutETData(t *testing.T) {
+	f := &fakeReadTable{errs: []error{
+		&rfc.ABAPException{Kind: rfc.KindException, Key: "DATA_BUFFER_EXCEEDED"},
+		fmt.Errorf("%w: RFC_READ_TABLE.USE_ET_DATA_4_RETURN", rfc.ErrUnknownParameter),
+	}}
+	_, err := ReadTable(context.Background(), f, "BADI_CHAR_COND", "", nil, 1)
+	if err == nil || !strings.Contains(err.Error(), "fewer fields") || !strings.Contains(err.Error(), "vsp query") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(f.calls) != 2 || f.calls[1]["USE_ET_DATA_4_RETURN"] != "X" {
+		t.Fatalf("calls = %v", f.calls)
+	}
+}
+
+func TestReadTableStringColumnDump(t *testing.T) {
+	dump := &rfc.ABAPException{Kind: rfc.KindRuntime, PlainText: "Error with ASSIGN ... CASTING in program SAPLSDTX"}
+	_, err := ReadTable(context.Background(), &fakeReadTable{errs: []error{dump}}, "BADI_STRING_COND", "", []string{"VALUE1"}, 1)
+	if err == nil || !strings.Contains(err.Error(), "STRING or RAWSTRING") || !errors.Is(err, dump) {
+		t.Fatalf("err = %v", err)
+	}
+	other := &rfc.ABAPException{Kind: rfc.KindException, Key: "TABLE_NOT_AVAILABLE"}
+	if _, err := ReadTable(context.Background(), &fakeReadTable{errs: []error{other}}, "ZNONE", "", nil, 1); err != other {
+		t.Fatalf("err = %v, want it passed through", err)
 	}
 }
