@@ -181,6 +181,10 @@ type Transport struct {
 	// authGen counts changes of the credentials the transport sends (see
 	// credentialsChanged); the identity pin's verdict belongs to one value.
 	authGen atomic.Uint64
+	// fallback, when set, names the stand-in of a standard path the system
+	// lacks (Client.FallbackPath). A request the ADT router cannot place is
+	// asked once more there. See fallback.go.
+	fallback func(ctx context.Context, path string) string
 }
 
 // NewTransport creates a new Transport with the given configuration.
@@ -260,6 +264,18 @@ type Response struct {
 // Request performs an HTTP request to the ADT API, through the response
 // cache when one is configured.
 func (t *Transport) Request(ctx context.Context, path string, opts *RequestOptions) (*Response, error) {
+	resp, err := t.requestCached(ctx, path, opts)
+	if err == nil || t.fallback == nil || !isRouterNotFound(err) || isDiscoveryPath(path) {
+		return resp, err
+	}
+	alt := t.fallback(ctx, path)
+	if alt == path {
+		return resp, err
+	}
+	return t.requestCached(ctx, alt, opts)
+}
+
+func (t *Transport) requestCached(ctx context.Context, path string, opts *RequestOptions) (*Response, error) {
 	if opts == nil {
 		opts = &RequestOptions{}
 	}

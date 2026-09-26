@@ -47,6 +47,12 @@ var zclVspAdtTxtResource string
 //go:embed zcl_vsp_adt_txt_feature.clas.abap
 var zclVspAdtTxtFeature string
 
+//go:embed zcl_vsp_adt_pkg_resource.clas.abap
+var zclVspAdtPkgResource string
+
+//go:embed zcl_vsp_adt_pkg_feature.clas.abap
+var zclVspAdtPkgFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -71,6 +77,8 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_TXT_POOL", zclVspAdtTxtPool, "vsp ADT fallback: one text pool"},
 		{"CLAS", "ZCL_VSP_ADT_TXT_RESOURCE", zclVspAdtTxtResource, "vsp ADT fallback: text elements"},
 		{"CLAS", "ZCL_VSP_ADT_TXT_FEATURE", zclVspAdtTxtFeature, "vsp ADT fallback: text elements feature"},
+		{"CLAS", "ZCL_VSP_ADT_PKG_RESOURCE", zclVspAdtPkgResource, "vsp ADT fallback: packages"},
+		{"CLAS", "ZCL_VSP_ADT_PKG_FEATURE", zclVspAdtPkgFeature, "vsp ADT fallback: packages feature"},
 	}
 }
 

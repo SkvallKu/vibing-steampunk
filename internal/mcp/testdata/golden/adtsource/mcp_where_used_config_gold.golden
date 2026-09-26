@@ -52,3 +52,4 @@ SQL SELECT object, obj_name, devclass FROM tadir WHERE pgmid = 'R3TR' AND obj_na
 SQL SELECT object, obj_name, devclass FROM tadir WHERE pgmid = 'R3TR' AND obj_name IN ('ZGOLD_MISSING')
 SQL SELECT object, obj_name, devclass FROM tadir WHERE pgmid = 'R3TR' AND obj_name IN ('ZGOLD_REPORT')
 SQL SELECT object, obj_name, devclass FROM tadir WHERE pgmid = 'R3TR' AND obj_name IN ('ZGOLD_VAR')
+UNEXPECTED GET /sap/bc/adt/discovery
