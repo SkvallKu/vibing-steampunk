@@ -672,11 +672,12 @@ func (c *Client) CallGraph(ctx context.Context, objectURI string, opts *CallGrap
 
 	switch direction {
 	case "callers":
-		callers, err := c.WhereUsed(ctx, objectURI)
+		used, err := c.WhereUsedFull(ctx, objectURI)
 		if err != nil {
 			return nil, err
 		}
-		for _, caller := range callers {
+		root.Unsearched = used.Unsearched
+		for _, caller := range used.Callers {
 			if opts.MaxResults > 0 && len(root.Children) >= opts.MaxResults {
 				break
 			}

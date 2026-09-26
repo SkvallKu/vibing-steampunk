@@ -171,11 +171,28 @@ func (s *Server) callGraphAnswer(ctx context.Context, request mcp.CallToolReques
 
 	switch direction {
 	case "callers":
-		callers, err := s.adtClient.WhereUsed(ctx, objectURI)
+		used, err := s.adtClient.WhereUsedFull(ctx, objectURI)
 		if err != nil {
 			return nil, fmt.Errorf("the where-used list could not be read for %s: %v", objectURI, err)
 		}
+		callers := used.Callers
 		answer["source"] = sourceWhereUsed
+		if used.Source == adt.WhereUsedSourceXref {
+			// Said up front: the same shape of answer from a coarser source
+			// would otherwise be read as SE84's.
+			answer["source"] = sourceCallersXref + used.Why
+			answer["caveat"] = callersXrefCaveat
+			if len(used.Unsearched) > 0 {
+				answer["unsearched"] = used.Unsearched
+				answer["gap"] = adt.UnsearchedNote(used.Unsearched, len(used.Unsearched), "query")
+			}
+			if used.Truncated != "" {
+				answer["incomplete"] = used.Truncated
+			}
+			if len(used.Notes) > 0 {
+				answer["notes"] = used.Notes
+			}
+		}
 		answer["total"] = len(callers)
 		if len(callers) > limit {
 			// Said, not left to be inferred from comparing "total" against the
@@ -187,6 +204,9 @@ func (s *Server) callGraphAnswer(ctx context.Context, request mcp.CallToolReques
 		answer["callers"] = callerAnswers(callers)
 		if len(callers) == 0 {
 			answer["note"] = emptyWhereUsedNote
+			if used.Source == adt.WhereUsedSourceXref {
+				answer["note"] = emptyCallersXrefNote
+			}
 		}
 	case "callees":
 		callees, gaps, err := s.adtClient.Callees(ctx, objectURI)
@@ -293,7 +313,7 @@ func (s *Server) callGraphObjectURI(ctx context.Context, request mcp.CallToolReq
 	objName := strings.ToUpper(strings.TrimSpace(getStringParam(args, "object_name")))
 	if objType == "" || objName == "" {
 		return "", fmt.Errorf("name the object: object_uri, or object_type plus object_name " +
-			"(CLAS, INTF, PROG, FUGR, FUNC)")
+			"(CLAS, INTF, PROG, FUGR, FUNC; for callers also TABL, DTEL, TTYP)")
 	}
 
 	if objType == "FUNC" {
@@ -314,6 +334,13 @@ func (s *Server) callGraphObjectURI(ctx context.Context, request mcp.CallToolReq
 		return "", fmt.Errorf("function module %s is not in the repository, so it has no URI to ask about", objName)
 	}
 
+	// Dictionary types have users and nothing they call, so only the callers
+	// question can use these; the callees one refuses the URI itself.
+	ddic := map[string]string{"TABL": "tables", "DTEL": "dataelements", "TTYP": "tabletypes"}
+	if dir, ok := ddic[objType]; ok {
+		return "/sap/bc/adt/ddic/" + dir + "/" + url.PathEscape(strings.ToLower(objName)), nil
+	}
+
 	uri := buildADTObjectURL(objType, objName)
 	if uri == "" {
 		return "", fmt.Errorf("%s is not an object type this can address; it knows CLAS, INTF, PROG, FUGR and FUNC", objType)
@@ -325,6 +352,14 @@ const (
 	sourceWhereUsed = "the where-used list behind SE84 " +
 		"(/sap/bc/adt/repository/informationsystem/usageReferences), filtered to direct references"
 	sourceCrossReference = "the CROSS and WBCROSSGT cross-reference tables, which SAP fills at activation"
+	sourceCallersXref    = "the CROSS, WBCROSSGT and D010INC cross-reference tables, read because "
+	callersXrefCaveat    = "Coarser than SE84: each caller is an object whose active source references this one " +
+		"(declaring a variable of a type counts), not only one that calls it; a call of an inherited method " +
+		"counts for the class that defines it, so a superclass lists its subclasses' users; dynamic calls are not recorded; " +
+		"a class caller carries no method, since the tables name the include."
+	emptyCallersXrefNote = "The cross-reference tables answered and hold no reference to this object from any " +
+		"other object's active source. The object may be unused, called only dynamically, or misspelt — " +
+		"a name that does not exist reads identically here."
 
 	// An empty where-used list and a misspelt object name produce the same 200
 	// and the same empty list. Saying so is the only way an agent can tell
