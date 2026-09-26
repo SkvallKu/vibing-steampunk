@@ -138,6 +138,15 @@ type FunctionGroup struct {
 	Version   string           `xml:"version,attr,omitempty"`
 	Links     []Link           `xml:"link"`
 	Functions []FunctionModule `xml:"functionModule,omitempty"`
+	// Includes come from the repository node structure, like Functions; the
+	// metadata document names neither.
+	Includes []FunctionGroupInclude `xml:"-"`
+}
+
+// FunctionGroupInclude is one include of a function group.
+type FunctionGroupInclude struct {
+	Name string
+	URI  string
 }
 
 // FunctionModule represents a function module.

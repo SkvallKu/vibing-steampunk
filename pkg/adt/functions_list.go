@@ -52,6 +52,16 @@ type repositoryNodeStructure struct {
 
 // ListFunctionModules returns the modules of a function group.
 func (c *Client) ListFunctionModules(ctx context.Context, groupName string) ([]FunctionModule, error) {
+	nodes, err := c.functionGroupNodes(ctx, groupName)
+	if err != nil {
+		return nil, err
+	}
+	return functionModulesFromNodes(nodes), nil
+}
+
+// functionGroupNodes reads the node structure of a function group: its
+// modules, its includes, and the rest of what Eclipse's tree shows for it.
+func (c *Client) functionGroupNodes(ctx context.Context, groupName string) ([]repositoryNode, error) {
 	groupName = strings.ToUpper(strings.TrimSpace(groupName))
 	if groupName == "" {
 		return nil, fmt.Errorf("function group name is required")
@@ -77,8 +87,57 @@ func (c *Client) ListFunctionModules(ctx context.Context, groupName string) ([]F
 	if err := xml.Unmarshal(resp.Body, &doc); err != nil {
 		return nil, fmt.Errorf("parsing the node structure of function group %s: %w", groupName, err)
 	}
+	return doc.Nodes, nil
+}
 
-	return functionModulesFromNodes(doc.Nodes), nil
+// functionGroupIncludesFromNodes keeps the includes: the group's own
+// (L<group>TOP, L<group>F01, ...) and the ones from elsewhere that it
+// includes, which ADT addresses as program includes in the group's context.
+// The URI is kept as SAP gives it: with /source/main on 7.50, without on 7.40.
+func functionGroupIncludesFromNodes(nodes []repositoryNode) []FunctionGroupInclude {
+	var includes []FunctionGroupInclude
+	for _, n := range nodes {
+		name := strings.TrimSpace(n.ObjectName)
+		if !strings.EqualFold(strings.TrimSpace(n.ObjectType), "FUGR/I") || name == "" {
+			continue
+		}
+		includes = append(includes, FunctionGroupInclude{Name: name, URI: strings.TrimSpace(n.ObjectURI)})
+	}
+	return includes
+}
+
+// functionGroupSourcesFromNodes lists the sources that make up a group — its
+// main program, every include and every module — as source URIs, the list
+// GetFunctionGroupAllSources otherwise takes from the group's objectstructure.
+// That resource answers 404 on 7.40 and 7.50.
+func functionGroupSourcesFromNodes(groupName string, nodes []repositoryNode) []string {
+	uris := []string{fmt.Sprintf("/sap/bc/adt/functions/groups/%s/source/main",
+		url.PathEscape(strings.ToLower(groupName)))}
+	seen := map[string]bool{uris[0]: true}
+	add := func(uri string) {
+		uri, _, _ = strings.Cut(strings.TrimSpace(uri), "#")
+		if uri == "" {
+			return
+		}
+		path, query, hasQuery := strings.Cut(uri, "?")
+		if !strings.HasSuffix(path, "/source/main") {
+			path += "/source/main"
+		}
+		if hasQuery {
+			path += "?" + query
+		}
+		if !seen[path] {
+			seen[path] = true
+			uris = append(uris, path)
+		}
+	}
+	for _, inc := range functionGroupIncludesFromNodes(nodes) {
+		add(inc.URI)
+	}
+	for _, fm := range functionModulesFromNodes(nodes) {
+		add(fm.URI)
+	}
+	return uris
 }
 
 // functionModulesFromNodes keeps the modules and drops everything else.

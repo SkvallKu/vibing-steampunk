@@ -170,7 +170,9 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetFunctionGroup") {
 		s.mcpServer.AddTool(mcp.NewTool("GetFunctionGroup",
-			mcp.WithDescription("Retrieve ABAP Function Group source code"),
+			mcp.WithDescription("Function group metadata with its function modules (Functions) and includes (Includes: "+
+				"the group's own L<group>TOP, L<group>F01, ... and the includes from elsewhere it pulls in). "+
+				"Read a source with GetSource"),
 			mcp.WithString("function_group",
 				mcp.Required(),
 				mcp.Description("Name of the function group"),

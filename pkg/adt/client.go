@@ -654,13 +654,14 @@ func (c *Client) GetFunctionGroup(ctx context.Context, groupName string) (*Funct
 		return nil, fmt.Errorf("parsing function group: %w", err)
 	}
 
-	// The metadata document carries no modules, so the list is fetched
-	// separately — see functions_list.go. A group whose modules cannot be
-	// listed is still a group worth returning: the caller asked for the group,
-	// and losing its metadata to a failure of the second call would be the
-	// worse answer.
-	if modules, err := c.ListFunctionModules(ctx, groupName); err == nil {
-		fg.Functions = modules
+	// The metadata document carries no modules and no includes, so both are
+	// read separately, from one node structure — see functions_list.go. A
+	// group whose contents cannot be listed is still a group worth returning:
+	// the caller asked for the group, and losing its metadata to a failure of
+	// the second call would be the worse answer.
+	if nodes, err := c.functionGroupNodes(ctx, groupName); err == nil {
+		fg.Functions = functionModulesFromNodes(nodes)
+		fg.Includes = functionGroupIncludesFromNodes(nodes)
 	} else if c.config.Verbose {
 		fmt.Fprintf(os.Stderr, "[WARN] function group %s: %v\n", groupName, err)
 	}
@@ -675,6 +676,8 @@ func (c *Client) GetFunctionGroup(ctx context.Context, groupName string) (*Funct
 //
 // The function group's objectstructure endpoint enumerates all FUGR/I (includes) and
 // FUGR/FF (function modules); we resolve each child's source/main URI and concatenate.
+// 7.40 and 7.50 answer 404 there, and the same list comes from the repository
+// node structure (functionGroupSourceURIs).
 // Individual sub-fetches that fail are skipped (best-effort) so a single broken include
 // does not hide deps from the rest of the group.
 //
@@ -688,59 +691,9 @@ func (c *Client) GetFunctionGroup(ctx context.Context, groupName string) (*Funct
 func (c *Client) GetFunctionGroupAllSources(ctx context.Context, groupName string) (string, []Unsearched, error) {
 	groupName = strings.ToLower(groupName)
 
-	structPath := fmt.Sprintf("/sap/bc/adt/functions/groups/%s/objectstructure", url.PathEscape(groupName))
-	resp, err := c.transport.Request(ctx, structPath, &RequestOptions{
-		Method: http.MethodGet,
-		Accept: "application/vnd.sap.adt.objectstructure.v2+xml",
-	})
+	srcURIs, err := c.functionGroupSourceURIs(ctx, groupName)
 	if err != nil {
-		return "", nil, fmt.Errorf("getting function group structure: %w", err)
-	}
-
-	type atomLink struct {
-		Rel  string `xml:"rel,attr"`
-		Href string `xml:"href,attr"`
-	}
-	type element struct {
-		Name     string     `xml:"name,attr"`
-		Type     string     `xml:"type,attr"`
-		Links    []atomLink `xml:"link"`
-		Children []element  `xml:"objectStructureElement"`
-	}
-	var root element
-	if err := xml.Unmarshal(resp.Body, &root); err != nil {
-		return "", nil, fmt.Errorf("parsing function group structure: %w", err)
-	}
-
-	seen := make(map[string]bool)
-	var srcURIs []string
-
-	// The root element is the FUGR itself — pick its source/main link so the TOP-level
-	// INCLUDE skeleton is also analyzed.
-	addLinks := func(e element) {
-		for _, l := range e.Links {
-			if strings.HasSuffix(l.Rel, "/source/definitionIdentifier") || strings.HasSuffix(l.Rel, "/definitionIdentifier") {
-				if strings.Contains(l.Href, "/source/main") && !seen[l.Href] {
-					seen[l.Href] = true
-					srcURIs = append(srcURIs, l.Href)
-				}
-			}
-		}
-	}
-	var walk func(e element)
-	walk = func(e element) {
-		// Include sources for the group itself (FUGR/F), its includes (FUGR/I*),
-		// and its function modules (FUGR/FF).
-		addLinks(e)
-		for _, ch := range e.Children {
-			walk(ch)
-		}
-	}
-	walk(root)
-
-	if len(srcURIs) == 0 {
-		// Fallback: at least fetch the top-level source so we get something.
-		srcURIs = []string{fmt.Sprintf("/sap/bc/adt/functions/groups/%s/source/main", url.PathEscape(groupName))}
+		return "", nil, err
 	}
 	sort.Strings(srcURIs)
 
@@ -843,6 +796,76 @@ func (c *Client) GetFunctionGroupAllSources(ctx context.Context, groupName strin
 		combined.WriteString("\n")
 	}
 	return combined.String(), missed, nil
+}
+
+// functionGroupSourceURIs lists the source URIs of a group's main program,
+// includes and modules, from the group's objectstructure where the system has
+// one and from the repository node structure where it answers 404.
+func (c *Client) functionGroupSourceURIs(ctx context.Context, groupName string) ([]string, error) {
+	structPath := fmt.Sprintf("/sap/bc/adt/functions/groups/%s/objectstructure", url.PathEscape(groupName))
+	resp, err := c.transport.Request(ctx, structPath, &RequestOptions{
+		Method: http.MethodGet,
+		Accept: "application/vnd.sap.adt.objectstructure.v2+xml",
+	})
+	if err != nil {
+		if isNotFound(err) {
+			// 7.40 and 7.50 have no objectstructure for a group; the node
+			// structure lists the same sources.
+			nodes, nerr := c.functionGroupNodes(ctx, groupName)
+			if nerr != nil {
+				return nil, fmt.Errorf("getting function group structure: %w; and from the node structure: %w", err, nerr)
+			}
+			return functionGroupSourcesFromNodes(groupName, nodes), nil
+		}
+		return nil, fmt.Errorf("getting function group structure: %w", err)
+	}
+
+	type atomLink struct {
+		Rel  string `xml:"rel,attr"`
+		Href string `xml:"href,attr"`
+	}
+	type element struct {
+		Name     string     `xml:"name,attr"`
+		Type     string     `xml:"type,attr"`
+		Links    []atomLink `xml:"link"`
+		Children []element  `xml:"objectStructureElement"`
+	}
+	var root element
+	if err := xml.Unmarshal(resp.Body, &root); err != nil {
+		return nil, fmt.Errorf("parsing function group structure: %w", err)
+	}
+
+	seen := make(map[string]bool)
+	var srcURIs []string
+
+	// The root element is the FUGR itself — pick its source/main link so the TOP-level
+	// INCLUDE skeleton is also analyzed.
+	addLinks := func(e element) {
+		for _, l := range e.Links {
+			if strings.HasSuffix(l.Rel, "/source/definitionIdentifier") || strings.HasSuffix(l.Rel, "/definitionIdentifier") {
+				if strings.Contains(l.Href, "/source/main") && !seen[l.Href] {
+					seen[l.Href] = true
+					srcURIs = append(srcURIs, l.Href)
+				}
+			}
+		}
+	}
+	var walk func(e element)
+	walk = func(e element) {
+		// Include sources for the group itself (FUGR/F), its includes (FUGR/I*),
+		// and its function modules (FUGR/FF).
+		addLinks(e)
+		for _, ch := range e.Children {
+			walk(ch)
+		}
+	}
+	walk(root)
+
+	if len(srcURIs) == 0 {
+		// Fallback: at least fetch the top-level source so we get something.
+		srcURIs = []string{fmt.Sprintf("/sap/bc/adt/functions/groups/%s/source/main", url.PathEscape(groupName))}
+	}
+	return srcURIs, nil
 }
 
 // GetFunction retrieves the source code of a function module.
