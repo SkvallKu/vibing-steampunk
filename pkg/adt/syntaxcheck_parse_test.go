@@ -87,3 +87,28 @@ func TestParseSyntaxCheckResultsCleanIsEmpty(t *testing.T) {
 		t.Fatalf("a clean check reported %d problems: %+v", len(results), results)
 	}
 }
+
+// An include with no main program is not checked at all: SAP answers 200 with
+// status notProcessed and no messages, which read as a clean source. The
+// report as ERH (7.50) sent it for a new include.
+func TestParseSyntaxCheckResultsSaysWhenNothingWasChecked(t *testing.T) {
+	body := `<?xml version="1.0" encoding="utf-8"?>
+<chkrun:checkRunReports xmlns:chkrun="http://www.sap.com/adt/checkrun">
+  <chkrun:checkReport chkrun:reporter="abapCheckRun" chkrun:triggeringUri="/sap/bc/adt/programs/includes/ztest_kudr_2_cls1" chkrun:status="notProcessed" chkrun:statusText="Главная программа не найдена в include ZTEST_KUDR_2_CLS1"/>
+</chkrun:checkRunReports>`
+
+	results, err := parseSyntaxCheckResults([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("an unchecked source must not read as clean: %+v", results)
+	}
+	r := results[0]
+	// A warning, not an error: a new include has no main program until one
+	// includes it, and an error would refuse to write it at all.
+	if r.Severity != "W" || r.URI != "/sap/bc/adt/programs/includes/ztest_kudr_2_cls1" ||
+		r.Text != SyntaxCheckNotPerformed+"Главная программа не найдена в include ZTEST_KUDR_2_CLS1" {
+		t.Errorf("result = %+v", r)
+	}
+}

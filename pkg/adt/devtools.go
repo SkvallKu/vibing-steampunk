@@ -24,6 +24,9 @@ type SyntaxCheckResult struct {
 	Text     string `json:"text"`
 }
 
+// SyntaxCheckNotPerformed starts the warning for a check SAP did not run.
+const SyntaxCheckNotPerformed = "syntax check not performed, the source was not checked: "
+
 // SyntaxCheck performs syntax check on ABAP source code.
 // objectURL is the ADT URL of the object (e.g., "/sap/bc/adt/programs/programs/ZTEST")
 // For class includes (e.g., "/sap/bc/adt/oo/classes/ZCL_FOO/includes/testclasses"),
@@ -90,7 +93,10 @@ func parseSyntaxCheckResults(data []byte) ([]SyntaxCheckResult, error) {
 		Messages []checkMessage `xml:"checkMessage"`
 	}
 	type checkReport struct {
-		MessageList checkMessageList `xml:"checkMessageList"`
+		Status        string           `xml:"status,attr"`
+		StatusText    string           `xml:"statusText,attr"`
+		TriggeringURI string           `xml:"triggeringUri,attr"`
+		MessageList   checkMessageList `xml:"checkMessageList"`
 	}
 	type checkRunReports struct {
 		Reports []checkReport `xml:"checkReport"`
@@ -105,6 +111,24 @@ func parseSyntaxCheckResults(data []byte) ([]SyntaxCheckResult, error) {
 	lineOffsetRegex := regexp.MustCompile(`([^#]+)#start=(\d+),(\d+)`)
 
 	for _, report := range resp.Reports {
+		// A report SAP did not process carries no messages, and an empty
+		// list reads as a clean source. It is what an include gets with no
+		// main program to be checked in: 200, status notProcessed, "Main
+		// program not found in include ..." — or "Select a master program"
+		// even for a group's include (7.50). The source was not checked at
+		// all, so that is said, as a warning: an error would refuse every new
+		// include, which has no main program until one includes it.
+		if strings.EqualFold(report.Status, "notProcessed") {
+			text := strings.TrimSpace(report.StatusText)
+			if text == "" {
+				text = "no reason given"
+			}
+			results = append(results, SyntaxCheckResult{
+				URI:      report.TriggeringURI,
+				Severity: "W",
+				Text:     SyntaxCheckNotPerformed + text,
+			})
+		}
 		for _, msg := range report.MessageList.Messages {
 			result := SyntaxCheckResult{
 				URI:      msg.URI,
