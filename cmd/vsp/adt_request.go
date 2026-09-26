@@ -13,7 +13,7 @@ import (
 
 var adtRequestCmd = &cobra.Command{
 	Use:   "request <METHOD> <PATH>",
-	Short: "Send one ADT request as given, over HTTP, with the session and CSRF token",
+	Short: "Send one ADT request as given, with the client's session and CSRF token",
 	Long: `One ADT request, as given: for a resource vsp has no command for yet, or to
 see exactly what a resource answers. The session, the CSRF token and the
 response cache are the client's own; the status line and headers go to stderr,
@@ -24,7 +24,16 @@ the body to stdout.
   vsp adt request POST /sap/bc/adt/cts/transportchecks --body check.xml -H "Content-Type=application/vnd.sap.as+xml; charset=UTF-8; dataname=com.sap.adt.transport.service.checkData"
 
 Anything but GET and HEAD is a write as far as the safety gates are concerned
-(--read-only refuses it), and --body - reads the body from stdin.`,
+(--read-only refuses it), and --body - reads the body from stdin.
+
+Each call is its own session, and it ends when vsp exits. --stateful keeps
+the ADT context only for this one request. A lock handle from ?_action=LOCK
+is bound to the session that issued it, so the next call cannot use it for
+the write or the unlock. Over HTTP the session cookie lives in memory and
+is not saved either. Over the RFC tunnel (rfc_host/rfc_saprouter) the
+session is the RFC connection, which no file can carry to another process.
+To change source, use a command that locks, writes and unlocks in one run:
+WriteSource, EditSource or deploy.`,
 	Args:         cobra.ExactArgs(2),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -77,12 +86,26 @@ Anything but GET and HEAD is a write as far as the safety gates are concerned
 			}
 		}
 		fmt.Fprintf(os.Stderr, "(%d bytes)\n", len(resp.Body))
+		if isLockRequest(args[1], query) {
+			fmt.Fprintln(os.Stderr, "note: the lock ends with this call's session; a later vsp call cannot use the handle (see --help)")
+		}
 		if out, _ := cmd.Flags().GetString("output"); out != "" {
 			return os.WriteFile(out, resp.Body, 0o644)
 		}
 		_, err = os.Stdout.Write(resp.Body)
 		return err
 	},
+}
+
+// isLockRequest reports whether the request asks for ?_action=LOCK, given
+// either with -q or in the path itself.
+func isLockRequest(path string, query url.Values) bool {
+	if strings.EqualFold(query.Get("_action"), "LOCK") {
+		return true
+	}
+	_, raw, _ := strings.Cut(path, "?")
+	inPath, _ := url.ParseQuery(raw)
+	return strings.EqualFold(inPath.Get("_action"), "LOCK")
 }
 
 func mustStringArray(cmd *cobra.Command, name string) []string {
@@ -95,7 +118,7 @@ func init() {
 	adtRequestCmd.Flags().StringArrayP("query", "q", nil, "NAME=VALUE query parameter (repeatable)")
 	adtRequestCmd.Flags().String("body", "", "File with the request body, or - for stdin")
 	adtRequestCmd.Flags().String("output", "", "Write the body to this file instead of stdout")
-	adtRequestCmd.Flags().Bool("stateful", false, "Send the request on the stateful session")
+	adtRequestCmd.Flags().Bool("stateful", false, "Send the request on the stateful session (this call only; the session ends when vsp exits)")
 	adtRequestCmd.Flags().String("lang", "", "")
 	_ = adtRequestCmd.Flags().MarkHidden("lang")
 	adtCmd.AddCommand(adtRequestCmd)
