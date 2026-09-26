@@ -36,6 +36,9 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(mcp): object descriptions say how long they may be` | SAP refuses a create whose description is longer than the short text allows, and the tools did not say how long that was. The `description` parameter of WriteSource, CreateObject, CreateAndActivateProgram and CreateClassWithTests now names the limit SAP reports in `descriptionTextLimit`: PROG and INCL 70, CLAS and INTF 60, FUGR 40, function modules 74. |
 | `fix(adt): a method include's number is base 36, not hexadecimal` | `DecodeMethodIncludes` read the CM suffix of a class include (`CL_X=====CM00A`) as hexadecimal. CL_DEP_TREE has CM00A to CM00Z, and TMDIR gives CM00Z as method 35, on 7.40 and 7.50: the suffix is base 36. |
 | `fix(adt): callers from the cross-reference tables name the caller's method` | A class caller read from WBCROSSGT was reduced to its class, and `component` held the part of the target used, while from the where-used list it is the caller's method. TMDIR is now read in chunks (`CLASSNAME IN` and `METHODINDX IN`, within 5,000 rows), `component` is the caller's method or section, as in SE84, and the part of the target goes to `target_component`. |
+| `fix(saprfc): the RFC tunnel keeps a namespace's %2F escaped` | The tunnel sent SADT_REST_RFC_ENDPOINT the decoded path, so `/sap/bc/adt/oo/classes/%2fsdf%2fcl_x` became `.../classes//sdf/cl_x`, and every object in a namespace, SAP's or the customer's, was a 404 over RFC. The path now goes as escaped. |
+| `fix(saprfc): read-table says why it cannot, and no rows is []` | `rfc read-table` on a row wider than 512 characters retried with `USE_ET_DATA_4_RETURN`, which 7.50 lacks, and a STRING or RAWSTRING column ended in SAP's `ASSIGN ... CASTING` dump. Both now say what to do instead: fewer fields, or data preview (`vsp query`, GetTableContents). No rows prints `[]`, not `null`. |
+| `fix(cli): an error is printed once, and without the usage screen` | A command that failed at run time printed the error, the usage screen and the error again. Now only the error; a wrong flag or argument still shows usage. |
 
 ### Older releases (7.40, 7.50)
 
@@ -151,6 +154,8 @@ go work init ./vibing-steampunk ./open-rfc-go
   works) and the AMDP debugger still need the ZADT_VSP WebSocket, which cannot be
   reached through a SAProuter.
 - Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: a declaration of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller is named with its method from TMDIR, and what it uses of the target is in `target_component`; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
+- `rfc read-table` (RFC_READ_TABLE) cannot read a STRING or RAWSTRING column, and on
+  7.50 not a row wider than 512 characters either; data preview (`vsp query`) reads both.
 
 ## Syncing with upstream
 

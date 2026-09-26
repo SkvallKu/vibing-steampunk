@@ -38,6 +38,9 @@
 | `fix(mcp): object descriptions say how long they may be` | SAP отказывает в создании, если описание длиннее, чем допускает краткий текст, а инструменты не говорили, какой это предел. Теперь параметр `description` у WriteSource, CreateObject, CreateAndActivateProgram и CreateClassWithTests называет лимит, который SAP отдаёт в `descriptionTextLimit`: PROG и INCL 70, CLAS и INTF 60, FUGR 40, функциональные модули 74. |
 | `fix(adt): a method include's number is base 36, not hexadecimal` | `DecodeMethodIncludes` читал суффикс CM у include класса (`CL_X=====CM00A`) как шестнадцатеричный. У CL_DEP_TREE есть CM00A…CM00Z, и TMDIR даёт для CM00Z метод 35, на 7.40 и 7.50: суффикс в base 36. |
 | `fix(adt): callers from the cross-reference tables name the caller's method` | Класс-вызывающий из WBCROSSGT сводился к классу, а в `component` лежала используемая часть цели, тогда как в where-used list там метод вызывающего. Теперь TMDIR читается пачками (`CLASSNAME IN` и `METHODINDX IN`, в пределах 5000 строк), `component` — метод или раздел вызывающего, как в SE84, а часть цели — в `target_component`. |
+| `fix(saprfc): the RFC tunnel keeps a namespace's %2F escaped` | Туннель передавал SADT_REST_RFC_ENDPOINT раскодированный путь: `/sap/bc/adt/oo/classes/%2fsdf%2fcl_x` превращался в `.../classes//sdf/cl_x`, и любой объект в namespace, стандартный или клиентский, через RFC давал 404. Теперь путь уходит в экранированном виде. |
+| `fix(saprfc): read-table says why it cannot, and no rows is []` | `rfc read-table` на строке шире 512 символов повторял вызов с `USE_ET_DATA_4_RETURN`, которого на 7.50 нет, а на колонке STRING или RAWSTRING заканчивался дампом SAP `ASSIGN ... CASTING`. Теперь оба случая говорят, что делать: меньше полей или data preview (`vsp query`, GetTableContents). Без строк печатается `[]`, а не `null`. |
+| `fix(cli): an error is printed once, and without the usage screen` | Команда, упавшая при выполнении, печатала ошибку, справку по использованию и ошибку ещё раз. Теперь только ошибку; на неверный флаг или аргумент справка по-прежнему выводится. |
 
 ### Старые релизы (7.40, 7.50)
 
@@ -153,6 +156,8 @@ go work init ./vibing-steampunk ./open-rfc-go
   работает) и отладчик AMDP по-прежнему требуют WebSocket ZADT_VSP, до которого через
   SAProuter не достучаться.
 - Вызывающие, прочитанные из таблиц перекрёстных ссылок (7.40 и 500 на 7.50, см. выше), грубее SE84: объявление переменной типа считается использованием; вызов унаследованного метода записан на класс, где метод определён, так что у суперкласса оказываются пользователи подклассов (`CL_SALV_FORM_UIE_LABEL`: SE84 — 9, таблицы — 277); виден `SUBMIT`, которого SE84 не показывает; у вызывающего класса метод берётся из TMDIR, а что он использует у цели — в `target_component`; динамические вызовы не записываются. Для очень используемых объектов (MARA) ответ строится по первым 5000 строк и помечен `incomplete`.
+- `rfc read-table` (RFC_READ_TABLE) не читает колонки STRING и RAWSTRING, а на 7.50 ещё и
+  строку шире 512 символов; data preview (`vsp query`) читает и то и другое.
 
 ## Синхронизация с апстримом
 
