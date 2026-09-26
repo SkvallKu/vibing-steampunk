@@ -34,6 +34,8 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(adt): deploy refuses a file whose name and source name different objects` | deploy writes the object the source names; an include file that kept its main program's `REPORT` line would have replaced the main program. When an abapGit-style file name and the source disagree, deploy stops. |
 | `fix(cli): adt request says a lock does not outlive the call` | Each `adt request` run is its own ADT session (over HTTP the cookie lives in memory, over the RFC tunnel the session is the connection), so a lock handle from one run is invalid in the next, `--stateful` or not. The help says so and points to WriteSource, EditSource and deploy; a LOCK request ends with a note on stderr. |
 | `fix(mcp): object descriptions say how long they may be` | SAP refuses a create whose description is longer than the short text allows, and the tools did not say how long that was. The `description` parameter of WriteSource, CreateObject, CreateAndActivateProgram and CreateClassWithTests now names the limit SAP reports in `descriptionTextLimit`: PROG and INCL 70, CLAS and INTF 60, FUGR 40, function modules 74. |
+| `fix(adt): a method include's number is base 36, not hexadecimal` | `DecodeMethodIncludes` read the CM suffix of a class include (`CL_X=====CM00A`) as hexadecimal. CL_DEP_TREE has CM00A to CM00Z, and TMDIR gives CM00Z as method 35, on 7.40 and 7.50: the suffix is base 36. |
+| `fix(adt): callers from the cross-reference tables name the caller's method` | A class caller read from WBCROSSGT was reduced to its class, and `component` held the part of the target used, while from the where-used list it is the caller's method. TMDIR is now read in chunks (`CLASSNAME IN` and `METHODINDX IN`, within 5,000 rows), `component` is the caller's method or section, as in SE84, and the part of the target goes to `target_component`. |
 
 ### Older releases (7.40, 7.50)
 
@@ -148,7 +150,7 @@ go work init ./vibing-steampunk ./open-rfc-go
 - `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (the MCP tool; `vsp rfc call`
   works) and the AMDP debugger still need the ZADT_VSP WebSocket, which cannot be
   reached through a SAProuter.
-- Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: a declaration of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller has no method; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
+- Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: a declaration of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller is named with its method from TMDIR, and what it uses of the target is in `target_component`; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
 
 ## Syncing with upstream
 
