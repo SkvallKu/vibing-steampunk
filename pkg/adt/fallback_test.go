@@ -153,3 +153,97 @@ func TestWriteTextPoolGoesToTheStandIn(t *testing.T) {
 		t.Errorf("the activation must name the stand-in URI, got %s", activationBody)
 	}
 }
+
+const discoveryPackagesStandIn = `<app:service xmlns:app="http://www.w3.org/2007/app">
+<app:workspace><app:collection href="/sap/bc/adt/packages/settings"/></app:workspace>
+<app:workspace><app:collection href="/sap/bc/adt/zvsp/packages"/></app:workspace>
+</app:service>`
+
+// 7.50 has /sap/bc/adt/packages/settings but not /packages: the stand-in
+// takes the package paths, the settings stay with the standard.
+func TestFallbackPathLeavesAMoreSpecificStandardPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if r.URL.Path == "/sap/bc/adt/discovery" {
+			w.Write([]byte(discoveryPackagesStandIn))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+	ctx := context.Background()
+	if got := c.FallbackPath(ctx, "/sap/bc/adt/packages/%24demo"); got != "/sap/bc/adt/zvsp/packages/%24demo" {
+		t.Errorf("package path: got %s", got)
+	}
+	if got := c.FallbackPath(ctx, "/sap/bc/adt/packages/settings"); got != "/sap/bc/adt/packages/settings" {
+		t.Errorf("settings must stay standard: got %s", got)
+	}
+}
+
+// Any request the router cannot place is asked once more at the stand-in,
+// so PackageExists and a package create work unchanged. A 404 that is the
+// resource's own answer (an exception document) is not asked again.
+func TestTransportAsksTheStandInAfterARouter404(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		switch p := strings.ToLower(r.URL.Path); {
+		case p == "/sap/bc/adt/discovery":
+			w.Write([]byte(discoveryPackagesStandIn))
+		case strings.HasPrefix(p, "/sap/bc/adt/packages"):
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("No suitable resource found"))
+		case p == "/sap/bc/adt/zvsp/packages/$demo" || p == "/sap/bc/adt/zvsp/packages/%24demo":
+			w.Write([]byte(`<pak:package adtcore:name="$DEMO"/>`))
+		case p == "/sap/bc/adt/zvsp/packages" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+		case strings.HasPrefix(p, "/sap/bc/adt/zvsp/packages/"):
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`<?xml version="1.0"?><exc:exception xmlns:exc="x"><type id="ExceptionResourceNotFound"/></exc:exception>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+	ctx := context.Background()
+
+	if ok, err := c.PackageExists(ctx, "$DEMO"); err != nil || !ok {
+		t.Fatalf("PackageExists($DEMO) = %v, %v; want true (requests %v)", ok, err, seen)
+	}
+	if ok, err := c.PackageExists(ctx, "$NONE"); err != nil || ok {
+		t.Fatalf("PackageExists($NONE) = %v, %v; want false", ok, err)
+	}
+	if err := c.CreateObject(ctx, CreateObjectOptions{ObjectType: ObjectTypePackage, Name: "$NEW", Description: "d"}); err != nil {
+		t.Fatalf("create: %v (requests %v)", err, seen)
+	}
+	found := false
+	for _, s := range seen {
+		found = found || s == "POST /sap/bc/adt/zvsp/packages"
+	}
+	if !found {
+		t.Errorf("the create must reach the stand-in: %v", seen)
+	}
+}
+
+func TestIsRouterNotFound(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{&APIError{StatusCode: 404, Message: "Подходящий ресурс не найден"}, true},
+		{&APIError{StatusCode: 404, Message: "No application class found for URI: /x"}, true},
+		{&APIError{StatusCode: 404, Message: `<?xml version="1.0"?><exc:exception xmlns:exc="x"/>`}, false},
+		{&APIError{StatusCode: 500, Message: "x"}, false},
+		{nil, false},
+	} {
+		if got := isRouterNotFound(tc.err); got != tc.want {
+			t.Errorf("isRouterNotFound(%v) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
+}

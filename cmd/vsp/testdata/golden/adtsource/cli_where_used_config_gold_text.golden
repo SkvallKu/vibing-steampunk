@@ -24,3 +24,4 @@ GET /sap/bc/adt/programs/programs/zgold_missing/source/main
 GET /sap/bc/adt/programs/programs/zgold_report/source/main
 SQL SELECT INCLUDE FROM CROSS WHERE TYPE = 'S' AND NAME = 'TVARVC'
 SQL SELECT INCLUDE FROM WBCROSSGT WHERE OTYPE = 'TY' AND NAME = 'TVARVC'
+UNEXPECTED GET /sap/bc/adt/discovery

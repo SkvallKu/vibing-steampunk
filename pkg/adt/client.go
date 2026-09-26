@@ -56,6 +56,9 @@ func newClient(cfg *Config, transport *Transport) *Client {
 		if transport.identity != nil {
 			transport.identity.probe = c.probeIdentity
 		}
+		// A request the ADT router cannot place is asked once more at its
+		// stand-in, where the release has one (fallback.go).
+		transport.fallback = c.FallbackPath
 	}
 	return c
 }

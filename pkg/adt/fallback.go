@@ -2,6 +2,7 @@ package adt
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -48,17 +49,44 @@ func (c *Client) FallbackPath(ctx context.Context, path string) string {
 			return path
 		}
 	}
-	lower := strings.ToLower(path)
+	lower := strings.ToLower(strings.SplitN(path, "?", 2)[0])
 	for _, std := range r.covered {
-		if lower != std && !strings.HasPrefix(lower, std+"/") {
+		if !underPath(lower, std) {
 			continue
 		}
 		if r.hrefs[std] {
 			return path
 		}
+		// A standard resource more specific than the stand-in stays where it
+		// is: 7.50 has /sap/bc/adt/packages/settings, not /packages.
+		for href := range r.hrefs {
+			if len(href) > len(std) && !strings.HasPrefix(href, FallbackRoot+"/") && underPath(lower, href) {
+				return path
+			}
+		}
 		return FallbackRoot + path[len(adtRoot):]
 	}
 	return path
+}
+
+func underPath(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
+}
+
+// isRouterNotFound tells a 404 of the ADT router — no application for the
+// path, or no resource in the application — from a resource's own 404 for
+// an object that does not exist, which comes as an ADT exception document.
+// Only the first can mean the resource is served somewhere else.
+func isRouterNotFound(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+		return false
+	}
+	return !strings.Contains(apiErr.Message, "<exc:exception") && !strings.Contains(apiErr.Message, ":exception ")
+}
+
+func isDiscoveryPath(path string) bool {
+	return strings.HasPrefix(path, "/sap/bc/adt/discovery") || strings.HasPrefix(path, "/sap/bc/adt/core/discovery")
 }
 
 func (r *fallbackRoutes) load(ctx context.Context, c *Client) bool {
