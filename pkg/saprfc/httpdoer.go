@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,17 @@ func (d *TunnelDoer) drop(bad *rfc.Client) {
 	}
 }
 
+// tunnelURI is the request line SADT_REST_RFC_ENDPOINT gets: the path as it
+// was sent, still escaped. The decoded Path would turn the %2F of a namespace
+// (/SDF/CL_X → %2fsdf%2fcl_x) into a slash, and ADT answers 404 to that.
+func tunnelURI(u *url.URL) string {
+	uri := u.EscapedPath()
+	if u.RawQuery != "" {
+		uri += "?" + u.RawQuery
+	}
+	return uri
+}
+
 // Do implements adt.HTTPDoer by tunnelling req through SADT_REST_RFC_ENDPOINT
 // and translating the answer back into an *http.Response. Everything above it
 // in pkg/adt — CSRF, safety gating, caching, response parsing — is unaware
@@ -90,10 +102,7 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("RFC tunnel: %w", err)
 	}
 
-	uri := req.URL.Path
-	if req.URL.RawQuery != "" {
-		uri += "?" + req.URL.RawQuery
-	}
+	uri := tunnelURI(req.URL)
 
 	var body []byte
 	if req.Body != nil {
