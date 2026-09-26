@@ -35,6 +35,7 @@
 | `fix(adt): a syntax check SAP did not run is not a clean source` | Для include без главной программы checkrun отвечает `notProcessed` без сообщений, и это читалось как «ошибок нет»: `SyntaxCheck`, `WriteSource INCL` и deploy называли непроверенный код чистым. Теперь такой ответ — предупреждение с текстом SAP (предупреждение, потому что у нового include главной программы ещё нет). |
 | `fix(adt): deploy refuses a file whose name and source name different objects` | deploy пишет тот объект, который назван в исходнике; файл include с оставшейся строкой `REPORT` главной программы заменил бы главную программу. Если имя файла в стиле abapGit и исходник расходятся, deploy останавливается. |
 | `fix(cli): adt request says a lock does not outlive the call` | Каждый запуск `adt request` — своя ADT-сессия (по HTTP cookie живут в памяти, через RFC-туннель сессия — это соединение), поэтому хэндл блокировки из одного запуска недействителен в следующем, с `--stateful` или без. Об этом теперь сказано в справке со ссылкой на WriteSource, EditSource и deploy; после запроса LOCK в stderr выводится примечание. |
+| `fix(mcp): object descriptions say how long they may be` | SAP отказывает в создании, если описание длиннее, чем допускает краткий текст, а инструменты не говорили, какой это предел. Теперь параметр `description` у WriteSource, CreateObject, CreateAndActivateProgram и CreateClassWithTests называет лимит, который SAP отдаёт в `descriptionTextLimit`: PROG и INCL 70, CLAS и INTF 60, FUGR 40, функциональные модули 74. |
 
 ### Старые релизы (7.40, 7.50)
 
