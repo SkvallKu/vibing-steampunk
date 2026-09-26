@@ -13,20 +13,33 @@ import (
 //     "explicit length specifications are necessary with types C, P, X and N
 //     in the OO context"; the same list separated by blanks answers;
 //   - ORDER BY a, b is a syntax error (the classic form is ORDER BY a b);
-//   - a parenthesis that touches what it encloses — IN ('A', 'B'),
-//     (A = 'x' OR ...) — fails once the statement is long, with an error that
-//     names a quote or a comma. The limit depends on rowNumber too (the
-//     service adds UP TO n ROWS to what it generates), so the same statement
-//     can pass at rowNumber=1 and fail at 100. Classic ABAP wants blanks
-//     inside parentheses; with them there is no such limit (330 characters
-//     checked).
+//   - a long statement can fail with 'Following "', '" a blank is required'
+//     or a like error naming a quote, a comma or a parenthesis, for where
+//     the service cut it, not for what it says (below).
 //
-// vsp can say the same thing in a form the old parser takes: blanks after
-// commas and inside parentheses always, and on a 400 one retry with the
-// commas that separate columns dropped.
+// The cut is in CL_ADT_DP_OPEN_SQL_HANDLER (read on 7.40 SP06). GET_INSTANCE
+// condenses the statement and appends a period; REPLACE_INTO_UPTO_CLAUSE puts
+// "UP TO n ROWS  INTO  CORRESPONDING FIELDS OF TABLE <ft_dynamic_table>"
+// after the table; and once that is 255 characters or more,
+// SPLIT_QUERY_STRING cuts it into lines of generated code before tokens
+// SCAN found. The last line starts one character early — the character
+// before its first token comes out twice — and that is harmless only when
+// the character is a blank. SCAN makes a token of a comma too, so when the
+// last token before column 250 is the comma of 'A', 'B' the last line starts
+// with the quote before it: 'A'', 'B' , and every quote after is paired
+// wrongly. Which statements fail depends on where that comma falls, so a
+// digit more in rowNumber can make or break the same statement. 7.50 has the
+// line "lv_last_line_end = lv_last_line_end - 1" commented out.
+//
+// vsp can say the same thing in a form the old parser takes: blanks around
+// commas and inside parentheses always, so that no token but the first
+// follows anything but a blank, and on a 400 one retry with the commas that
+// separate columns dropped. COUNT( needs nothing: SCAN reads it as one
+// token with the blank before it (checked on 7.40 SP06 with COUNT( on each
+// column from 237 to 250).
 
-// normalizeDataPreviewSQL puts a blank after every comma and inside every
-// parenthesis, outside quotes, and makes a line break or a tab outside
+// normalizeDataPreviewSQL puts a blank before and after every comma and
+// inside every parenthesis, outside quotes, and makes a line break or a tab outside
 // quotes a blank: 7.40 SP06 does not take a line break for white space, so
 // "DD03L\nWHERE ..." reads as the name of a table that does not exist.
 // Every release accepts the result.
@@ -43,6 +56,9 @@ func normalizeDataPreviewSQL(query string) string {
 			ch = ' '
 		}
 		if !inQuote && ch == ')' && i > 0 && !blank(query[i-1]) && query[i-1] != '(' {
+			out.WriteByte(' ')
+		}
+		if !inQuote && ch == ',' && i > 0 && !blank(query[i-1]) {
 			out.WriteByte(' ')
 		}
 		out.WriteByte(ch)
