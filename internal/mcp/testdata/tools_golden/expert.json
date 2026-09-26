@@ -2490,15 +2490,19 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Get object explorer tree structure. Returns hierarchical view of object components.",
+      "description": "Components of a repository object as a tree: a class's methods, attributes and types; a function group's modules, includes, subroutines and screens; a program's; a form's interface. Each component has its ADT URI where SAP gives one.",
       "inputSchema": {
         "properties": {
           "max_results": {
-            "description": "Maximum number of results (default: 100)",
+            "description": "Maximum number of components (default: 100); for anything but a class, per kind of component",
             "type": "number"
           },
           "object_name": {
-            "description": "Object name (e.g., ZCL_TEST, ZPROGRAM)",
+            "description": "Object name (e.g., ZCL_TEST, ZPROGRAM, W61V)",
+            "type": "string"
+          },
+          "object_type": {
+            "description": "CLAS, INTF, PROG, FUGR, SFPF (form) or SFPI (form interface), or the ADT type such as FUGR/F. Optional: without it the repository is searched for the name",
             "type": "string"
           }
         },
