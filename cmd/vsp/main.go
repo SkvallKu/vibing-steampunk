@@ -70,7 +70,13 @@ Configuration files:
 Configuration priority: CLI flags > env vars > .env file > defaults
 Ready-to-use configs for 8 AI agents: docs/cli-agents/`,
 	Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, BuildDate),
+	// main prints the error, once.
+	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Flags and arguments were accepted by now, so an error from here on
+		// is the call failing — a 404, an ABAP exception — and not a usage
+		// mistake: the flag list after it only buries the message.
+		cmd.SilenceUsage = true
 		// Also check SAP_VERBOSE env var (viper reads it, but resolveConfig
 		// is only called for the MCP server mode, so we check it here too)
 		if !cfg.Verbose {
