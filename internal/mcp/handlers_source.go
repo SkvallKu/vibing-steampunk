@@ -149,7 +149,7 @@ func (s *Server) registerWriteSource() {
 			mcp.Description("Operation mode: upsert (default, auto-detect), create (new only), update (existing only)"),
 		),
 		mcp.WithString("description",
-			mcp.Description("Object description (required for create mode)"),
+			mcp.Description("Object description (required for create mode). SAP limits its length: PROG and INCL 70 characters, CLAS and INTF 60"),
 		),
 		mcp.WithString("package",
 			mcp.Description("Package name (required for create mode)"),
