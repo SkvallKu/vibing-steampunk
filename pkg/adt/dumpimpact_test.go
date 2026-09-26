@@ -405,3 +405,27 @@ func TestRankExposureSplitsOffTheStack(t *testing.T) {
 		t.Errorf("exposed[1] = %+v, want ZDEMO_REPORT one unit further out", exposed[1])
 	}
 }
+
+func TestFunctionPoolNamesInANamespace(t *testing.T) {
+	for _, tc := range []struct{ in, group string }{
+		{"SAPLZSALES", "ZSALES"},
+		{"LZSALESU03", "ZSALES"},
+		{"LZSALESTOP", "ZSALES"},
+		{"/BEV1/SAPLEM0", "/BEV1/EM0"},
+		{"/BEV1/LEM0F01", "/BEV1/EM0"},
+		{"/BEV1/LEM0TOP", "/BEV1/EM0"},
+	} {
+		if got, ok := groupFromPool(tc.in); !ok || got != tc.group {
+			t.Errorf("groupFromPool(%q) = %q, %v; want %q", tc.in, got, ok, tc.group)
+		}
+	}
+	if got := functionPool("/BEV1/EM0"); got != "/BEV1/SAPLEM0" {
+		t.Errorf("functionPool = %q", got)
+	}
+	if got := groupOfPool("/BEV1/SAPLEM0"); got != "/BEV1/EM0" {
+		t.Errorf("groupOfPool = %q", got)
+	}
+	if got := poolIncludeFor("/BEV1/EM0", "7"); got != "/BEV1/LEM0U07" {
+		t.Errorf("poolIncludeFor = %q", got)
+	}
+}
