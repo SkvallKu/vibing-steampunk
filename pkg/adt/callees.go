@@ -358,7 +358,7 @@ func (c *Client) functionModuleInclude(ctx context.Context, target calleeTarget)
 	}
 	pool := strings.ToUpper(strings.TrimSpace(fmt.Sprintf("%v", res.Rows[0]["PNAME"])))
 	section := strings.TrimSpace(fmt.Sprintf("%v", res.Rows[0]["INCLUDE"]))
-	group := strings.TrimPrefix(pool, "SAPL")
+	group := groupOfPool(pool)
 	if group == "" || section == "" {
 		return "", fmt.Errorf("TFDIR names no group or no section for %s", name)
 	}
@@ -373,12 +373,12 @@ func (c *Client) functionModuleInclude(ctx context.Context, target calleeTarget)
 // part worth having a name for: TFDIR keeps the section as a number, the
 // include wants two digits, and LZDEMO_LOGU5 matches nothing at all.
 func poolIncludeFor(group, section string) string {
-	group = strings.ToUpper(strings.TrimSpace(group))
+	ns, rest := splitNamespace(strings.ToUpper(strings.TrimSpace(group)))
 	section = strings.TrimSpace(section)
 	if len(section) < 2 {
 		section = strings.Repeat("0", 2-len(section)) + section
 	}
-	return "L" + group + "U" + section
+	return ns + "L" + rest + "U" + section
 }
 
 // checkSQLLiteral refuses a name that would not survive being pasted into a

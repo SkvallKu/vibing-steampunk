@@ -326,22 +326,50 @@ func functionGroupOf(program, include string) (string, bool) {
 }
 
 func groupFromPool(name string) (string, bool) {
-	name = strings.TrimSpace(strings.ToUpper(name))
-	if strings.HasPrefix(name, "SAPL") && len(name) > 4 {
-		return name[4:], true
+	ns, rest := splitNamespace(strings.TrimSpace(strings.ToUpper(name)))
+	if strings.HasPrefix(rest, "SAPL") && len(rest) > 4 {
+		return ns + rest[4:], true
 	}
 	// L<group><section>: the section is a letter and two more characters, or
 	// the literal TOP. Anything shorter is not a function pool include.
-	if len(name) > 4 && name[0] == 'L' {
-		if strings.HasSuffix(name, "TOP") {
-			return name[1 : len(name)-3], true
+	if len(rest) > 4 && rest[0] == 'L' {
+		if strings.HasSuffix(rest, "TOP") {
+			return ns + rest[1:len(rest)-3], true
 		}
-		tail := name[len(name)-3:]
+		tail := rest[len(rest)-3:]
 		if isPoolSection(tail) {
-			return name[1 : len(name)-3], true
+			return ns + rest[1:len(rest)-3], true
 		}
 	}
 	return "", false
+}
+
+// splitNamespace parts /BEV1/SAPLEM0 into /BEV1/ and SAPLEM0. The pool and
+// include prefixes of a namespaced group go after the namespace, not before
+// it. A name outside a namespace comes back whole as the rest.
+func splitNamespace(name string) (ns, rest string) {
+	if strings.HasPrefix(name, "/") {
+		if i := strings.Index(name[1:], "/"); i > 0 {
+			return name[:i+2], name[i+2:]
+		}
+	}
+	return "", name
+}
+
+// functionPool names the main program of a group: SAPL<group>, or
+// /NS/SAPL<group> in a namespace.
+func functionPool(group string) string {
+	ns, rest := splitNamespace(strings.ToUpper(strings.TrimSpace(group)))
+	return ns + "SAPL" + rest
+}
+
+// groupOfPool is the inverse of functionPool, for the PNAME column of TFDIR.
+func groupOfPool(pool string) string {
+	ns, rest := splitNamespace(strings.ToUpper(strings.TrimSpace(pool)))
+	if !strings.HasPrefix(rest, "SAPL") || len(rest) == 4 {
+		return ""
+	}
+	return ns + rest[4:]
 }
 
 // isPoolSection recognises the U01/F02/I03/E01 suffix of a function pool
