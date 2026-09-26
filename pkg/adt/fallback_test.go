@@ -1,0 +1,155 @@
+package adt
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+)
+
+const discoveryWithStandIn = `<app:service xmlns:app="http://www.w3.org/2007/app">
+<app:workspace><app:collection href="/sap/bc/adt/programs/programs"/></app:workspace>
+<app:workspace>
+ <app:collection href="/sap/bc/adt/zvsp/info"/>
+ <app:collection href="/sap/bc/adt/zvsp/textelements/programs"/>
+ <app:collection href="/sap/bc/adt/zvsp/textelements/classes"/>
+</app:workspace>
+</app:service>`
+
+const discoveryWithBoth = `<app:service xmlns:app="http://www.w3.org/2007/app">
+<app:workspace><app:collection href="/sap/bc/adt/textelements/programs"/></app:workspace>
+<app:workspace><app:collection href="/sap/bc/adt/zvsp/textelements/programs"/></app:workspace>
+</app:service>`
+
+func TestFallbackPathUsesTheStandInOnlyWhenTheStandardIsMissing(t *testing.T) {
+	for _, tc := range []struct {
+		name, discovery, path, want string
+	}{
+		{"stand-in only", discoveryWithStandIn,
+			"/sap/bc/adt/textelements/programs/rsusr002", "/sap/bc/adt/zvsp/textelements/programs/rsusr002"},
+		{"collection itself", discoveryWithStandIn,
+			"/sap/bc/adt/textelements/classes", "/sap/bc/adt/zvsp/textelements/classes"},
+		{"not covered", discoveryWithStandIn,
+			"/sap/bc/adt/programs/programs/rsusr002", "/sap/bc/adt/programs/programs/rsusr002"},
+		{"prefix is not a segment", discoveryWithStandIn,
+			"/sap/bc/adt/textelements/programsx/a", "/sap/bc/adt/textelements/programsx/a"},
+		{"standard wins after an upgrade", discoveryWithBoth,
+			"/sap/bc/adt/textelements/programs/rsusr002", "/sap/bc/adt/textelements/programs/rsusr002"},
+		{"already a stand-in", discoveryWithStandIn,
+			"/sap/bc/adt/zvsp/textelements/programs/a", "/sap/bc/adt/zvsp/textelements/programs/a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("x-csrf-token", "test-token")
+				if r.URL.Path == "/sap/bc/adt/discovery" {
+					w.Write([]byte(tc.discovery))
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer srv.Close()
+			c := NewClient(srv.URL, "user", "pass")
+			if got := c.FallbackPath(context.Background(), tc.path); got != tc.want {
+				t.Errorf("FallbackPath(%s) = %s, want %s", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFallbackPathWithoutDiscoveryLeavesThePathAndAsksAgain(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if r.URL.Path == "/sap/bc/adt/discovery" {
+			calls++
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	path := "/sap/bc/adt/textelements/programs/a"
+	for i := 0; i < 2; i++ {
+		if got := c.FallbackPath(context.Background(), path); got != path {
+			t.Fatalf("an unreadable discovery must leave the path: got %s", got)
+		}
+	}
+	if calls < 2 {
+		t.Errorf("a failed discovery must be asked again, asked %d times", calls)
+	}
+}
+
+// The whole write goes to the stand-in: the lock, the PUT, the unlock, and
+// the URI inside the activation request, which the stand-in's URI mapper
+// resolves. Only the discovery is read at the standard address.
+func TestWriteTextPoolGoesToTheStandIn(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	var activationBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		path := strings.ToLower(r.URL.Path)
+		switch {
+		case path == "/sap/bc/adt/discovery":
+			w.Write([]byte(discoveryWithStandIn))
+		case strings.HasPrefix(path, "/sap/bc/adt/textelements/"):
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("No application class found for URI: " + r.URL.Path))
+		case strings.HasPrefix(path, "/sap/bc/adt/datapreview"):
+			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><dataPreview:tableData xmlns:dataPreview="http://www.sap.com/adt/dataPreview"><dataPreview:totalRows>1</dataPreview:totalRows><dataPreview:columns><dataPreview:metadata dataPreview:name="MASTERLANG"/><dataPreview:dataSet><dataPreview:data>E</dataPreview:data></dataPreview:dataSet></dataPreview:columns></dataPreview:tableData>`))
+		case path == "/sap/bc/adt/zvsp/textelements/classes/zcl_demo" && r.Method == http.MethodPost:
+			if r.URL.Query().Get("_action") == "LOCK" {
+				w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><asx:abap xmlns:asx="http://www.sap.com/abapxml"><asx:values><DATA><LOCK_HANDLE>H1</LOCK_HANDLE><CORRNR/><IS_LOCAL>X</IS_LOCAL></DATA></asx:values></asx:abap>`))
+			}
+		case path == "/sap/bc/adt/zvsp/textelements/classes/zcl_demo/source/symbols":
+			w.Header().Set("Content-Type", "application/vnd.sap.adt.textelements.symbols.v1")
+			w.Write([]byte("@MaxLength:10\r\n001=Old"))
+		case path == "/sap/bc/adt/activation":
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			activationBody = string(b)
+			mu.Unlock()
+			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><chkl:messages xmlns:chkl="http://www.sap.com/abapxml/checklist"/>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Resource does not exist"))
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	plan, err := c.WriteTextPool(context.Background(), TextPoolTarget{Type: "CLAS", Name: "ZCL_DEMO"}, "E",
+		map[string]map[string]string{"I": {"001": "New"}}, "", TextPoolOptions{})
+	if err != nil {
+		t.Fatalf("WriteTextPool: %v (requests: %v)", err, seen)
+	}
+	if !plan.Applied || plan.Written != 1 {
+		t.Errorf("want one text written, got %+v", plan)
+	}
+	for _, s := range seen {
+		if strings.Contains(strings.ToLower(s), "/sap/bc/adt/textelements/") {
+			t.Errorf("request to the missing standard path: %s", s)
+		}
+	}
+	for _, want := range []string{
+		"POST /sap/bc/adt/zvsp/textelements/classes/zcl_demo",
+		"PUT /sap/bc/adt/zvsp/textelements/classes/zcl_demo/source/symbols",
+	} {
+		found := false
+		for _, s := range seen {
+			found = found || strings.EqualFold(s, want)
+		}
+		if !found {
+			t.Errorf("missing request %s in %v", want, seen)
+		}
+	}
+	if !strings.Contains(activationBody, `adtcore:uri="/sap/bc/adt/zvsp/textelements/classes/zcl_demo"`) {
+		t.Errorf("the activation must name the stand-in URI, got %s", activationBody)
+	}
+}

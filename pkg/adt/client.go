@@ -26,6 +26,10 @@ type Client struct {
 	// callers leave this nil; tests inject a stub to avoid opening a real
 	// WebSocket. See enhancements.go.
 	rfcFetcherFactory func(ctx context.Context) (rfcSourceFetcher, error)
+
+	// Where a standard ADT path is served on this system: itself, or its
+	// stand-in under /sap/bc/adt/zvsp. See fallback.go.
+	fallback fallbackRoutes
 }
 
 // NewClient creates a new ADT client with the given configuration.
