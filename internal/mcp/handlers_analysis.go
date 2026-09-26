@@ -123,7 +123,9 @@ func (s *Server) handleGetObjectStructure(ctx context.Context, request mcp.CallT
 		maxResults = int(max)
 	}
 
-	structure, err := s.adtClient.GetObjectStructureCAI(ctx, objectName, maxResults)
+	objectType, _ := request.GetArguments()["object_type"].(string)
+
+	structure, err := s.adtClient.GetObjectStructure(ctx, objectName, objectType, maxResults)
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("Failed to get object structure: %v", err)), nil
 	}

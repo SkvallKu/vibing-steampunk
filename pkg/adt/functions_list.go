@@ -34,12 +34,20 @@ type repositoryNode struct {
 	ObjectURI  string `xml:"OBJECT_URI"`
 }
 
+// repositoryTypeInfo labels one kind of node: PROG/PS is "Screens" in the
+// logon language.
+type repositoryTypeInfo struct {
+	ObjectType string `xml:"OBJECT_TYPE"`
+	Label      string `xml:"OBJECT_TYPE_LABEL"`
+}
+
 // repositoryNodeStructure is the document the node structure endpoint returns:
 // an ABAP XML envelope, not an ADT resource, with the nodes under
 // asx:values/DATA/TREE_CONTENT.
 type repositoryNodeStructure struct {
-	XMLName xml.Name         `xml:"abap"`
-	Nodes   []repositoryNode `xml:"values>DATA>TREE_CONTENT>SEU_ADT_REPOSITORY_OBJ_NODE"`
+	XMLName xml.Name             `xml:"abap"`
+	Nodes   []repositoryNode     `xml:"values>DATA>TREE_CONTENT>SEU_ADT_REPOSITORY_OBJ_NODE"`
+	Types   []repositoryTypeInfo `xml:"values>DATA>OBJECT_TYPES>SEU_ADT_OBJECT_TYPE_INFO"`
 }
 
 // ListFunctionModules returns the modules of a function group.

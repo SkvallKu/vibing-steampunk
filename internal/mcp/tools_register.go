@@ -413,13 +413,19 @@ func (s *Server) registerAnalysisTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetObjectStructure") {
 		s.mcpServer.AddTool(mcp.NewTool("GetObjectStructure",
-			mcp.WithDescription("Get object explorer tree structure. Returns hierarchical view of object components."),
+			mcp.WithDescription("Components of a repository object as a tree: a class's methods, attributes and types; "+
+				"a function group's modules, includes, subroutines and screens; a program's; a form's interface. "+
+				"Each component has its ADT URI where SAP gives one."),
 			mcp.WithString("object_name",
 				mcp.Required(),
-				mcp.Description("Object name (e.g., ZCL_TEST, ZPROGRAM)"),
+				mcp.Description("Object name (e.g., ZCL_TEST, ZPROGRAM, W61V)"),
+			),
+			mcp.WithString("object_type",
+				mcp.Description("CLAS, INTF, PROG, FUGR, SFPF (form) or SFPI (form interface), or the ADT type such as FUGR/F. "+
+					"Optional: without it the repository is searched for the name"),
 			),
 			mcp.WithNumber("max_results",
-				mcp.Description("Maximum number of results (default: 100)"),
+				mcp.Description("Maximum number of components (default: 100); for anything but a class, per kind of component"),
 			),
 		), s.handleGetObjectStructure)
 	}

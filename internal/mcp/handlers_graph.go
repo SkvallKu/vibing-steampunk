@@ -1584,7 +1584,7 @@ func (s *Server) resolveUsageTargetURI(ctx context.Context, target graph.UsageTa
 		if target.Method == "" {
 			return intfURL, nil
 		}
-		structure, err := s.adtClient.GetObjectStructureCAI(ctx, target.ObjectName, 200)
+		structure, err := s.adtClient.GetObjectStructure(ctx, target.ObjectName, "INTF", 200)
 		if err == nil {
 			if href := findObjectExplorerHref(structure, target.Method); href != "" {
 				return href, nil
