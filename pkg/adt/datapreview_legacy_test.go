@@ -11,10 +11,13 @@ import (
 func TestNormalizeDataPreviewSQL(t *testing.T) {
 	tests := map[string]string{
 		// The ERP_218 shapes: IN list and a bracketed OR, both tight.
-		"SELECT * FROM DD03L WHERE TABNAME IN ('A','B,C','D') AND X = ','": "SELECT * FROM DD03L WHERE TABNAME IN ( 'A', 'B,C', 'D' ) AND X = ','",
+		"SELECT * FROM DD03L WHERE TABNAME IN ('A','B,C','D') AND X = ','": "SELECT * FROM DD03L WHERE TABNAME IN ( 'A' , 'B,C' , 'D' ) AND X = ','",
 		"SELECT * FROM T WHERE (A = '(x)' OR B = 'y') AND C = 1":           "SELECT * FROM T WHERE ( A = '(x)' OR B = 'y' ) AND C = 1",
 		// Already spaced: unchanged.
-		"SELECT * FROM T WHERE A IN ( 'X', 'Y' )": "SELECT * FROM T WHERE A IN ( 'X', 'Y' )",
+		"SELECT * FROM T WHERE A IN ( 'X' , 'Y' )": "SELECT * FROM T WHERE A IN ( 'X' , 'Y' )",
+		// A comma touching the literal before it: the service's cut can
+		// double that quote (see the top of datapreview_legacy.go).
+		"SELECT * FROM T WHERE A IN ( 'X', 'Y' )": "SELECT * FROM T WHERE A IN ( 'X' , 'Y' )",
 		"SELECT COUNT(*) FROM T":                  "SELECT COUNT( * ) FROM T",
 		"SELECT f() FROM T":                       "SELECT f() FROM T",
 		// A query written over several lines: on 7.40 SP06 the break is not
