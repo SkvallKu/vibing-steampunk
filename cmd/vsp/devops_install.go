@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	embedded "github.com/oisee/vibing-steampunk/embedded/abap"
+	"github.com/oisee/vibing-steampunk/embedded/abap/adtfallback"
 	"github.com/oisee/vibing-steampunk/embedded/deps"
 	installer "github.com/oisee/vibing-steampunk/internal/install"
 	"github.com/oisee/vibing-steampunk/pkg/adt"
@@ -485,6 +486,14 @@ func runInstallList(_ *cobra.Command, _ []string) error {
 	fmt.Printf("   Install: vsp install zadt-vsp\n")
 	fmt.Println()
 
+	// ADT fallback points
+	fmt.Printf("2. adt-fallback\n")
+	fmt.Printf("   Description: stand-ins under /sap/bc/adt/zvsp for ADT resources the release lacks (text elements)\n")
+	fmt.Printf("   Default package: %s\n", adtfallback.Package)
+	fmt.Printf("   Objects: %d, and %d enhancements\n", len(adtfallback.Objects()), len(adtfallback.Enhancements))
+	fmt.Printf("   Install: vsp install adt-fallback    Remove: vsp uninstall adt-fallback\n")
+	fmt.Println()
+
 	// Embedded dependencies (abapGit editions)
 	dependencies := deps.GetAvailableDependencies()
 	for i, dep := range dependencies {
@@ -492,7 +501,7 @@ func runInstallList(_ *cobra.Command, _ []string) error {
 		if dep.Available {
 			status = "Available"
 		}
-		fmt.Printf("%d. %s\n", i+2, dep.Name)
+		fmt.Printf("%d. %s\n", i+3, dep.Name)
 		fmt.Printf("   Description: %s\n", dep.Description)
 		fmt.Printf("   Default package: %s\n", dep.Package)
 		fmt.Printf("   Status: %s\n", status)

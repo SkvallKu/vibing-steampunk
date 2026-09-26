@@ -323,8 +323,8 @@ func (c *Client) GetTextPoolInLanguage(ctx context.Context, programName, lang st
 		{"selections", "S"},
 		{"headings", "H"},
 	} {
-		path := fmt.Sprintf("/sap/bc/adt/textelements/programs/%s/source/%s",
-			url.PathEscape(programName), sub.name)
+		path := c.FallbackPath(ctx, fmt.Sprintf("/sap/bc/adt/textelements/programs/%s", url.PathEscape(programName))) +
+			"/source/" + sub.name
 		resp, err := c.transport.Request(ctx, path, &RequestOptions{
 			Method:           http.MethodGet,
 			Accept:           "application/vnd.sap.adt.textelements." + sub.name + ".v1",

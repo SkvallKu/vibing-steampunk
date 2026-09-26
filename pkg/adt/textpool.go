@@ -272,7 +272,7 @@ type TextPoolOptions struct {
 // answers "No application class found"). The texts may well be there; they
 // cannot be read this way, and saying "no texts" would be a wrong answer.
 func errNoTextElements(err error) error {
-	return fmt.Errorf("this system has no ADT text elements resource (/sap/bc/adt/textelements), so the text pool cannot be read or written over ADT; the texts themselves may exist (SE38 → Goto → Text elements): %w", err)
+	return fmt.Errorf("this system has no ADT text elements resource (/sap/bc/adt/textelements), so the text pool cannot be read or written over ADT; the texts themselves may exist (SE38 → Goto → Text elements). `vsp install adt-fallback` adds a stand-in for it: %w", err)
 }
 
 func (p *TextPoolPlan) changes() int {
@@ -306,7 +306,7 @@ func (c *Client) TextPool(ctx context.Context, target TextPoolTarget, lang strin
 
 func (c *Client) readTextDocument(ctx context.Context, t TextPoolTarget, kind, lang string, stateful bool) (*textDocument, error) {
 	doc := TextPoolKinds[kind]
-	resp, err := c.transport.Request(ctx, t.resource()+"/source/"+doc, &RequestOptions{
+	resp, err := c.transport.Request(ctx, c.FallbackPath(ctx, t.resource())+"/source/"+doc, &RequestOptions{
 		Method:           http.MethodGet,
 		Accept:           "application/vnd.sap.adt.textelements." + doc + ".v1",
 		OverrideLanguage: strings.ToUpper(lang),
@@ -396,7 +396,8 @@ func (c *Client) WriteTextPool(ctx context.Context, target TextPoolTarget, lang 
 	}
 
 	trPlan := c.planTransport(ctx, transport, t.objectURL(), "")
-	lock, err := c.LockObject(ctx, t.resource(), "MODIFY", trPlan.lockCorrNr(transport))
+	resource := c.FallbackPath(ctx, t.resource())
+	lock, err := c.LockObject(ctx, resource, "MODIFY", trPlan.lockCorrNr(transport))
 	if err != nil {
 		return plan, fmt.Errorf("locking the text pool of %s: %w", t, err)
 	}
@@ -405,7 +406,7 @@ func (c *Client) WriteTextPool(ctx context.Context, target TextPoolTarget, lang 
 	unlock := func() {
 		if !unlocked {
 			unlocked = true
-			_ = c.UnlockObject(unlockCtx, t.resource(), lock.LockHandle)
+			_ = c.UnlockObject(unlockCtx, resource, lock.LockHandle)
 		}
 	}
 	defer unlock()
@@ -443,7 +444,7 @@ func (c *Client) WriteTextPool(ctx context.Context, target TextPoolTarget, lang 
 			params.Set("corrNr", plan.Transport)
 		}
 		vocabulary := "application/vnd.sap.adt.textelements." + TextPoolKinds[k] + ".v1"
-		if _, err := c.transport.Request(ctx, t.resource()+"/source/"+TextPoolKinds[k], &RequestOptions{
+		if _, err := c.transport.Request(ctx, resource+"/source/"+TextPoolKinds[k], &RequestOptions{
 			Method:           http.MethodPut,
 			Query:            params,
 			Body:             []byte(d.String(k)),
@@ -465,7 +466,7 @@ func (c *Client) WriteTextPool(ctx context.Context, target TextPoolTarget, lang 
 	// the active version, and a later source edit may drop them. The text
 	// elements are activated as their own object, after the unlock.
 	unlock()
-	if res, err := c.Activate(unlockCtx, t.resource(), t.Name); err != nil {
+	if res, err := c.Activate(unlockCtx, resource, t.Name); err != nil {
 		plan.Notes = append(plan.Notes, "written but not activated: "+err.Error())
 	} else if res != nil && !res.Success {
 		plan.Notes = append(plan.Notes, "written but not activated: "+strings.Join(activationMessages(res), "; "))
