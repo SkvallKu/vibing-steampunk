@@ -128,6 +128,15 @@ func (c *Client) FindReferences(ctx context.Context, objectURL string, line int,
 		Accept:      "application/*",
 	})
 	if err != nil {
+		if isNotFound(err) {
+			// 7.40 SP06 answers 404 for every URI: the resource is not
+			// there. What uses a whole object can still be read from the
+			// cross-reference tables (WhereUsed, GetCallersOf); a symbol at a
+			// line and column cannot.
+			return nil, fmt.Errorf("find references failed: the where-used resource is not on this system, "+
+				"so references to a symbol at a position cannot be found here; who uses a whole object is "+
+				"answered by GetCallersOf from the cross-reference tables: %w", err)
+		}
 		return nil, fmt.Errorf("find references failed: %w", err)
 	}
 

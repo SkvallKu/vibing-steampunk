@@ -90,6 +90,10 @@ type ImpactUnit struct {
 	// different and more dangerous thing than an error: it comes back 200 with
 	// an empty list, and an empty list reads as "nobody calls this".
 	Note string `json:"note,omitempty"`
+	// Source is set when the callers came from the cross-reference tables
+	// rather than the where-used list, and Caveat says what that costs.
+	Source string `json:"source,omitempty"`
+	Caveat string `json:"caveat,omitempty"`
 }
 
 // DumpImpactResult is the blast radius of one dump.
@@ -171,7 +175,7 @@ func (c *Client) DumpImpact(ctx context.Context, dump Dump, opts DumpImpactOptio
 			units[i].Note = note
 			continue
 		}
-		callers, unresolved, err := c.callersOf(ctx, units[i].URI, units[i].Object, includes)
+		used, err := c.whereUsedOf(ctx, units[i].URI, units[i].Object, includes)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				// Out of time is not one unit's problem: every unit after this
@@ -182,8 +186,13 @@ func (c *Client) DumpImpact(ctx context.Context, dump Dump, opts DumpImpactOptio
 			units[i].Err = err.Error()
 			continue
 		}
-		units[i].Unresolved = unresolved
-		units[i].Gap = UnresolvedIncludesNote(unresolved)
+		units[i].Unresolved = used.Unresolved
+		units[i].Gap = UnresolvedIncludesNote(used.Unresolved)
+		callers := used.Callers
+		if used.Source != WhereUsedSourceList {
+			units[i].Source = used.Source
+			units[i].Caveat = xrefCaveat(used)
+		}
 		units[i].Total = len(callers)
 		for j := range callers {
 			callers[j].Distance = units[i].Distance
@@ -422,8 +431,10 @@ func adtSegment(name string) string {
 }
 
 // WhereUsed answers "who calls this" for one ADT object, over the where-used
-// list SE84 uses. It is the same filtering the dump impact query relies on, and
-// it is exported because "who calls this" is not a question only a dump asks.
+// list SE84 uses, or over the cross-reference tables on a system without it
+// (see WhereUsedFull, which also says which of the two answered). It is the
+// same filtering the dump impact query relies on, and it is exported because
+// "who calls this" is not a question only a dump asks.
 //
 // The name the object goes by is taken from its own URI, which is what lets the
 // self-references be dropped.
@@ -431,7 +442,11 @@ func adtSegment(name string) string {
 // The second result names the program includes that could not be resolved to
 // their main program; an empty one means every include was.
 func (c *Client) WhereUsed(ctx context.Context, objectURI string) ([]ExposedCaller, []Unsearched, error) {
-	return c.callersOf(ctx, objectURI, objectNameFromURI(objectURI), c.newIncludeResolver())
+	res, err := c.WhereUsedFull(ctx, objectURI)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Callers, res.Unresolved, nil
 }
 
 // callersOf is the one route from a where-used list to callers, shared by
