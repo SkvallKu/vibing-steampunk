@@ -398,6 +398,22 @@ func (c *Client) xrefCallers(ctx context.Context, hits []xrefHit, target callerT
 			"an include among them has the wrong URI: "+err.Error())
 	}
 
+	// A class caller's include is one of its methods or sections, and TMDIR
+	// says which method: the component the where-used list would name.
+	var classIncludes []string
+	for _, h := range hits {
+		inc := strings.ToUpper(strings.TrimSpace(h.include))
+		if _, _, isClass := classPoolOf(inc); isClass && !seen[inc] {
+			seen[inc] = true
+			classIncludes = append(classIncludes, inc)
+		}
+	}
+	methods, err := c.DecodeMethodIncludes(ctx, classIncludes)
+	if err != nil {
+		notes = append(notes, "TMDIR could not be read for every class caller, so some are placed by their "+
+			"method include (CMnnn) rather than the method's name: "+err.Error())
+	}
+
 	byKey := map[string]int{}
 	var out []ExposedCaller
 	var tadirKeys []string // parallel to out
@@ -407,24 +423,23 @@ func (c *Client) xrefCallers(ctx context.Context, hits []xrefHit, target callerT
 			continue
 		}
 		key := unit.typ + " " + unit.name
-		component := h.component
+		component := ""
+		if m, ok := methods[strings.ToUpper(strings.TrimSpace(h.include))]; ok {
+			component = m.Where()
+		}
 		if at, seen := byKey[key]; seen {
 			out[at].IsTest = out[at].IsTest || unit.isTest
-			switch {
-			case component == "" || containsItem(out[at].Component, component):
-			case out[at].Component == "":
-				out[at].Component = component
-			default:
-				out[at].Component += ", " + component
-			}
+			out[at].Component = addItem(out[at].Component, component)
+			out[at].TargetComponent = addItem(out[at].TargetComponent, h.component)
 			continue
 		}
 		out = append(out, ExposedCaller{
-			Name:      unit.name,
-			Type:      unit.typ,
-			URI:       unit.uri,
-			Component: component,
-			IsTest:    unit.isTest,
+			Name:            unit.name,
+			Type:            unit.typ,
+			URI:             unit.uri,
+			Component:       component,
+			TargetComponent: h.component,
+			IsTest:          unit.isTest,
 		})
 		byKey[key] = len(out) - 1
 		tadirKeys = append(tadirKeys, unit.tadirType+" "+unit.tadirName)
@@ -667,6 +682,17 @@ func sqlInList(names []string) string {
 		quoted[i] = "'" + sqlQuote(n) + "'"
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// addItem appends item to a ", "-separated list once.
+func addItem(list, item string) string {
+	switch {
+	case item == "" || containsItem(list, item):
+		return list
+	case list == "":
+		return item
+	}
+	return list + ", " + item
 }
 
 func containsItem(list, item string) bool {

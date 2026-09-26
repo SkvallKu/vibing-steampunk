@@ -116,6 +116,11 @@ func TestWhereUsedFallsBackToCrossReferenceOn404(t *testing.T) {
 			col("NAME", "ZREPORT", "ZREPORT_TOP"),
 			col("SUBC", "1", "I"),
 		),
+		"TMDIR": tableXML(
+			col("CLASSNAME", "ZCL_ORDER", "ZCL_ORDER"),
+			col("METHODINDX", "00001", "00002"),
+			col("METHODNAME", "CREATE", "CHECK"),
+		),
 		"TADIR": tableXML(
 			col("OBJECT", "CLAS", "FUGR", "PROG", "PROG"),
 			col("OBJ_NAME", "ZCL_ORDER", "ZSALES", "ZREPORT", "ZREPORT_TOP"),
@@ -166,9 +171,17 @@ func TestWhereUsedFallsBackToCrossReferenceOn404(t *testing.T) {
 			// the test include among them marks it.
 			t.Error("ZCL_ORDER is used from its test include too")
 		}
-		if c.Component != "MATNR" {
-			t.Errorf("the field used should be kept as the component, got %q", c.Component)
+		// As the where-used list has it: the caller's methods and sections,
+		// and apart from them the part of the table used.
+		if c.Component != "CREATE, CHECK, test classes" {
+			t.Errorf("the component should be the caller's methods and sections, got %q", c.Component)
 		}
+		if c.TargetComponent != "MATNR" {
+			t.Errorf("the field used should be the target component, got %q", c.TargetComponent)
+		}
+	}
+	if q := x.asked("TMDIR"); len(q) != 1 || !strings.Contains(q[0], "METHODINDX IN ( '00001', '00002' )") {
+		t.Errorf("one TMDIR query for the class callers' methods, got %q", q)
 	}
 }
 
@@ -236,6 +249,11 @@ func TestCallersFromXrefDropsTheTargetsOwnIncludes(t *testing.T) {
 			),
 			col("NAME", "ZCL_ORDER\\ME:RUN", "ZCL_ORDER", "ZCL_ORDER\\ME:RUN"),
 		),
+		"TMDIR": tableXML(
+			col("CLASSNAME", "ZCL_ORDER", "ZCL_ORDER_TEST"),
+			col("METHODINDX", "00001", "00001"),
+			col("METHODNAME", "RUN", "SETUP"),
+		),
 		"TADIR": tableXML(col("OBJECT"), col("OBJ_NAME"), col("DEVCLASS")),
 	}}
 	srv := x.start(t)
@@ -249,8 +267,33 @@ func TestCallersFromXrefDropsTheTargetsOwnIncludes(t *testing.T) {
 	if len(res.Callers) != 1 || res.Callers[0].Name != "ZCL_ORDER_TEST" {
 		t.Fatalf("only ZCL_ORDER_TEST uses ZCL_ORDER, got %+v", res.Callers)
 	}
-	if res.Callers[0].Component != "RUN" {
-		t.Errorf("the method called should be the component, got %q", res.Callers[0].Component)
+	if c := res.Callers[0]; c.Component != "SETUP" || c.TargetComponent != "RUN" {
+		t.Errorf("SETUP calls RUN: got component %q, target component %q", c.Component, c.TargetComponent)
+	}
+}
+
+// Without TMDIR a class caller is still placed, by its method include, and
+// the answer says why the method has no name.
+func TestCallersFromXrefNamesTheIncludeWhenTMDIRIsRefused(t *testing.T) {
+	x := &xrefServer{usageStatus: http.StatusNotFound, tables: map[string]string{
+		"WBCROSSGT": tableXML(
+			col("INCLUDE", "ZCL_USER======================CM00Z"),
+			col("NAME", "ZCL_ORDER\\ME:RUN"),
+		),
+		"TADIR": tableXML(col("OBJECT"), col("OBJ_NAME"), col("DEVCLASS")),
+	}}
+	srv := x.start(t)
+	defer srv.Close()
+
+	res, err := NewClient(srv.URL, "user", "pass").CallersFromXref(context.Background(), "/sap/bc/adt/oo/classes/zcl_order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Callers) != 1 || res.Callers[0].Component != "ZCL_USER======================CM00Z" {
+		t.Fatalf("the caller should be placed by its include, got %+v", res.Callers)
+	}
+	if len(res.Notes) == 0 || !strings.Contains(strings.Join(res.Notes, " "), "TMDIR") {
+		t.Errorf("the answer should say TMDIR was not read, got notes %q", res.Notes)
 	}
 }
 

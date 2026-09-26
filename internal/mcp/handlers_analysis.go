@@ -283,19 +283,23 @@ type callerAnswer struct {
 	// Component is the method or routine the reference sits in, which is where
 	// to look rather than which object to open.
 	Component string `json:"component,omitempty"`
-	IsTest    bool   `json:"is_test"`
+	// TargetComponent is the part of the target used — a field, a method —
+	// named only by the cross-reference tables.
+	TargetComponent string `json:"target_component,omitempty"`
+	IsTest          bool   `json:"is_test"`
 }
 
 func callerAnswers(callers []adt.ExposedCaller) []callerAnswer {
 	out := make([]callerAnswer, 0, len(callers))
 	for _, c := range callers {
 		out = append(out, callerAnswer{
-			Name:      c.Name,
-			Type:      c.Type,
-			URI:       c.URI,
-			Package:   c.Package,
-			Component: c.Component,
-			IsTest:    c.IsTest,
+			Name:            c.Name,
+			Type:            c.Type,
+			URI:             c.URI,
+			Package:         c.Package,
+			Component:       c.Component,
+			TargetComponent: c.TargetComponent,
+			IsTest:          c.IsTest,
 		})
 	}
 	return out
@@ -358,7 +362,7 @@ const (
 	callersXrefCaveat    = "Coarser than SE84: each caller is an object whose active source references this one " +
 		"(declaring a variable of a type counts), not only one that calls it; a call of an inherited method " +
 		"counts for the class that defines it, so a superclass lists its subclasses' users; dynamic calls are not recorded; " +
-		"a class caller carries no method, since the tables name the include."
+		"component is the caller's method or section, as in SE84, and target_component the part of this object it uses."
 	emptyCallersXrefNote = "The cross-reference tables answered and hold no reference to this object from any " +
 		"other object's active source. The object may be unused, called only dynamically, or misspelt — " +
 		"a name that does not exist reads identically here."

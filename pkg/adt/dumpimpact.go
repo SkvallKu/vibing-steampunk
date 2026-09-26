@@ -53,7 +53,11 @@ type ExposedCaller struct {
 	URI       string `json:"uri,omitempty"`
 	Package   string `json:"package,omitempty"`
 	Component string `json:"component,omitempty"` // the method or routine holding the reference
-	IsTest    bool   `json:"is_test"`
+	// TargetComponent is the part of the target the caller uses — a field of
+	// a table, a method of a class — when the answer comes from the
+	// cross-reference tables, which record it. The where-used list does not.
+	TargetComponent string `json:"target_component,omitempty"`
+	IsTest          bool   `json:"is_test"`
 	// Distance counts units between the failing statement and this caller: 0
 	// means it calls the unit that died, 1 means it calls that unit's caller,
 	// and so on outward along the dump's stack.
