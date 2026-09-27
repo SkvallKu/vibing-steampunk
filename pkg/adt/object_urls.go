@@ -44,6 +44,8 @@ func GetObjectURL(objectType CreatableObjectType, name string, parentName string
 		// A DDIC table's source is its DDL, at the same shape as the CDS types
 		// above. Addressable all along; nothing asked for it.
 		return fmt.Sprintf("/sap/bc/adt/ddic/tables/%s", url.PathEscape(strings.ToLower(name)))
+	case ObjectTypeStructure:
+		return fmt.Sprintf("/sap/bc/adt/ddic/structures/%s", url.PathEscape(strings.ToLower(name)))
 	case ObjectTypeSRVB:
 		return fmt.Sprintf("/sap/bc/adt/businessservices/bindings/%s", url.PathEscape(strings.ToLower(name)))
 	default:
