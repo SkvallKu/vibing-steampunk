@@ -9,9 +9,9 @@
 "! <li>GET .../{name}: the object document (name, description, package);</li>
 "! <li>GET/PUT .../{name}/source/main: the "define table" source.</li>
 "! </ul>
-"! The fields are the dictionary's own business: 7.50 already edits
-"! structures as source (CL_SBD_STRUCTURE_PARSER, _PERSIST), and a table
-"! body is a structure body. Only the header differs: "define table", and
+"! The fields are a structure body: ZIF_VSP_DDIC_SOURCE reads and
+"! writes them — the standard's parser where the release has one (7.50),
+"! ours where not (7.40); ?parser=sap|own asks for one. Only the header differs: "define table", and
 "! the table annotations tableCategory, deliveryClass, dataMaintenance,
 "! which are taken off here and set on DD02V. A write stores the inactive
 "! version (DDIF_TABL_PUT) for /sap/bc/adt/activation. An activation that
@@ -44,6 +44,7 @@ CLASS zcl_vsp_adt_tabl_resource DEFINITION
 
     DATA name TYPE ddobjname.
     DATA is_source TYPE abap_bool.
+    DATA parser_kind TYPE string.
 
     METHODS parse_uri
       IMPORTING request TYPE REF TO if_adt_rest_request
@@ -238,6 +239,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
       RAISE EXCEPTION TYPE cx_adt_res_not_found.
     ENDIF.
     name = value.
+    parser_kind = zcl_vsp_ddic_src=>kind_of( request ).
 
     uri = request->get_inner_rest_request( )->get_uri( ).
     SPLIT uri AT '?' INTO uri value.
@@ -275,11 +277,10 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
 
 
   METHOD get_source.
-    DATA persist TYPE REF TO cl_sbd_structure_persist.
+    DATA source TYPE REF TO zif_vsp_ddic_source.
     DATA lines TYPE string_table.
     DATA line TYPE string.
     DATA header TYPE dd02v.
-    DATA key TYPE seu_objkey.
     DATA props TYPE string.
     DATA done TYPE abap_bool.
 
@@ -289,15 +290,10 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
       header = read_header( 'M' ).
     ENDIF.
 
-    CREATE OBJECT persist.
-    key = name.
-    persist->get_source( EXPORTING i_object_key = key
-                                   i_version    = version
-                         IMPORTING e_source     = lines ).
+    source = zcl_vsp_ddic_src=>get( parser_kind ).
+    lines = source->render( name = name version = version ).
     IF lines IS INITIAL AND version = 'I'.
-      persist->get_source( EXPORTING i_object_key = key
-                                     i_version    = 'A'
-                           IMPORTING e_source     = lines ).
+      lines = source->render( name = name version = 'A' ).
     ENDIF.
 
     props = |@AbapCatalog.tableCategory : #TRANSPARENT{ cl_abap_char_utilities=>newline }| &&
@@ -310,9 +306,10 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
       IF done = abap_false.
         REPLACE FIRST OCCURRENCE OF '@AbapCatalog.enhancementCategory'
           IN line WITH '@AbapCatalog.enhancement.category'.
-        IF to_lower( condense( line ) ) CP 'define type *'.
+        IF to_lower( condense( line ) ) CP 'define type *'
+            OR to_lower( condense( line ) ) CP 'define structure *'.
           result = result && props && cl_abap_char_utilities=>newline.
-          REPLACE FIRST OCCURRENCE OF REGEX '^(\s*)define\s+type\s' IN line
+          REPLACE FIRST OCCURRENCE OF REGEX '^(\s*)define\s+(type|structure)\s' IN line
             WITH `$1define table ` IGNORING CASE.
           done = abap_true.
         ENDIF.
@@ -574,12 +571,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     DATA value TYPE string.
     DATA props TYPE ty_table_props.
     DATA in_header TYPE abap_bool VALUE abap_true.
-    DATA logger TYPE REF TO cl_wb_checklist.
-    DATA parser TYPE REF TO cl_sbd_structure_parser.
-    DATA message TYPE rsfb_source.
-    DATA message_line TYPE LINE OF rsfb_source.
-    DATA text TYPE string.
-    DATA error_line TYPE i.
+    DATA definition TYPE zif_vsp_ddic_source=>ty_definition.
     DATA dd02v TYPE dd02v.
     DATA old TYPE dd02v.
     DATA dd09v TYPE dd09v.
@@ -628,33 +620,13 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
         |Only transparent tables are served here, not #{ props-category }| ).
     ENDIF.
 
-    CREATE OBJECT logger.
-    parser = cl_sbd_structure_parser=>create( i_logger = logger i_object_name = name ).
-    parser->scan_source_table( body ).
-    IF logger->has_error_messages( ) = abap_true.
-      logger->get_error_message( EXPORTING  p_index        = 1
-                                 IMPORTING  p_message_text = message
-                                            p_line         = error_line
-                                 EXCEPTIONS OTHERS         = 1 ).
-      LOOP AT message INTO message_line.
-        text = text && message_line && ` `.
-      ENDLOOP.
-      IF error_line > 0.
-        text = |Line { error_line }: { text }|.
-      ENDIF.
-      zcl_vsp_adt_txt_format=>raise_not_acceptable( text ).
-    ENDIF.
-
-    dd02v = parser->get_header( ).
-    dd03p = parser->get_fields( ).
-    dd08v = parser->get_foreign_keys( ).
-    " As the structure editor saves: the dictionary expects every key
-    " field of the check table, generic ones included.
-    dd05m = cl_sbd_structure_persist=>adjust_foreign_key_fields(
-      i_foreign_key_fields = parser->get_foreign_key_fields( )
-      i_foreign_keys       = dd08v ).
-    dd35v = parser->get_value_helps( ).
-    dd36m = parser->get_value_help_fields( ).
+    definition = zcl_vsp_ddic_src=>get( parser_kind )->parse( name = name source = body ).
+    dd02v = definition-header.
+    dd03p = definition-fields.
+    dd08v = definition-foreign_keys.
+    dd05m = definition-foreign_key_fields.
+    dd35v = definition-value_helps.
+    dd36m = definition-value_help_fields.
 
     " What the structure parser does not know is kept from the table.
     old = read_header( ).
