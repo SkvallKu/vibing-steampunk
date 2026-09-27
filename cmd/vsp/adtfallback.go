@@ -31,7 +31,12 @@ var installADTFallbackCmd = &cobra.Command{
 On a release without a standard ADT resource vsp then uses the stand-in under
 /sap/bc/adt/zvsp, found through the discovery document; once the system has the
 standard resource (after an upgrade) vsp uses that again. Covered now:
-  /sap/bc/adt/textelements  (programs, classes) — vsp texts, GetTextElements
+  /sap/bc/adt/textelements    (programs, classes) — vsp texts, GetTextElements
+  /sap/bc/adt/packages        (read, create, delete) — CreatePackage, GetPackage
+  /sap/bc/adt/ddic/tables     (transparent tables as source) — GetTable, WriteSource TABL
+  /sap/bc/adt/ddic/structures (structures as source, 7.40) — GetStructure, WriteSource STRUCT
+The table and structure source is 7.50's own where the release has it,
+and vsp's (the same language, checked against 7.50's) where it does not.
 
 What it does:
   1. creates the package if needed (with the same temporary report: ADT

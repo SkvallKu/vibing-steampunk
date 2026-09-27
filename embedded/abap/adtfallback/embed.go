@@ -77,6 +77,9 @@ var zclVspAdtTablResource string
 //go:embed zcl_vsp_adt_tabl_feature.clas.abap
 var zclVspAdtTablFeature string
 
+//go:embed zcl_vsp_adt_stru_feature.clas.abap
+var zclVspAdtStruFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -111,6 +114,7 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_DDIC_SRC_CHECK", zclVspDdicSrcCheck, "vsp ADT fallback: structure source check"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_RESOURCE", zclVspAdtTablResource, "vsp ADT fallback: database tables"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_FEATURE", zclVspAdtTablFeature, "vsp ADT fallback: tables feature"},
+		{"CLAS", "ZCL_VSP_ADT_STRU_FEATURE", zclVspAdtStruFeature, "vsp ADT fallback: structures feature"},
 	}
 }
 
