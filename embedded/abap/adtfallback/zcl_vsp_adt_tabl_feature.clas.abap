@@ -43,6 +43,11 @@ CLASS zcl_vsp_adt_tabl_feature IMPLEMENTATION.
     registry->register_resource(
       template      = co_path && '/{name}/source/main'
       handler_class = co_handler ).
+    " Not discoverable: our structure source against the standard's or
+    " the dictionary (ZCL_VSP_DDIC_SRC_CHECK), for checking a release.
+    registry->register_resource(
+      template      = '/ddic/check'
+      handler_class = 'ZCL_VSP_DDIC_SRC_CHECK' ).
   ENDMETHOD.
 
 

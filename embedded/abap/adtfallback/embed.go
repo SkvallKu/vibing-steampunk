@@ -68,6 +68,9 @@ var zclVspDdicSrcOwn string
 //go:embed zcl_vsp_ddic_src.clas.abap
 var zclVspDdicSrc string
 
+//go:embed zcl_vsp_ddic_src_check.clas.abap
+var zclVspDdicSrcCheck string
+
 //go:embed zcl_vsp_adt_tabl_resource.clas.abap
 var zclVspAdtTablResource string
 
@@ -105,6 +108,7 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_DDIC_SRC_SAP", zclVspDdicSrcSap, "vsp ADT fallback: structure source, SAP's"},
 		{"CLAS", "ZCL_VSP_DDIC_SRC_OWN", zclVspDdicSrcOwn, "vsp ADT fallback: structure source, ours"},
 		{"CLAS", "ZCL_VSP_DDIC_SRC", zclVspDdicSrc, "vsp ADT fallback: which structure source"},
+		{"CLAS", "ZCL_VSP_DDIC_SRC_CHECK", zclVspDdicSrcCheck, "vsp ADT fallback: structure source check"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_RESOURCE", zclVspAdtTablResource, "vsp ADT fallback: database tables"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_FEATURE", zclVspAdtTablFeature, "vsp ADT fallback: tables feature"},
 	}
