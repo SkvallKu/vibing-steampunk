@@ -1,6 +1,8 @@
 "! <p class="shorttext synchronized">vsp ADT fallback: database tables</p>
 "! /sap/bc/adt/zvsp/ddic/tables[/{name}[/source/main]], the source-based
-"! table editing of newer releases, for transparent tables:
+"! table editing of newer releases, for transparent tables; and the same
+"! for structures at /zvsp/ddic/structures (7.40 has neither), where the
+"! source is the "define type" body itself:
 "! <ul>
 "! <li>POST .../tables?corrNr=..: creates an empty table (a blueSource
 "!     document names it, its description and package), with default
@@ -26,6 +28,8 @@ CLASS zcl_vsp_adt_tabl_resource DEFINITION
   PUBLIC SECTION.
     CONSTANTS co_content_type TYPE string
       VALUE 'application/vnd.sap.adt.tables.v2+xml'.
+    CONSTANTS co_structure_type TYPE string
+      VALUE 'application/vnd.sap.adt.blues.v1+xml'.
     CONSTANTS co_source_type TYPE string VALUE 'text/plain'.
 
     METHODS get REDEFINITION.
@@ -45,6 +49,11 @@ CLASS zcl_vsp_adt_tabl_resource DEFINITION
     DATA name TYPE ddobjname.
     DATA is_source TYPE abap_bool.
     DATA parser_kind TYPE string.
+    "! Served at /ddic/structures: a structure, not a table.
+    DATA is_structure TYPE abap_bool.
+
+    METHODS set_kind
+      IMPORTING request TYPE REF TO if_adt_rest_request.
 
     METHODS parse_uri
       IMPORTING request TYPE REF TO if_adt_rest_request
@@ -90,6 +99,10 @@ CLASS zcl_vsp_adt_tabl_resource DEFINITION
       IMPORTING lines TYPE string_table
       RAISING   cx_adt_rest.
 
+    METHODS write_structure
+      IMPORTING lines TYPE string_table
+      RAISING   cx_adt_rest.
+
     CLASS-METHODS to_annotation
       IMPORTING value         TYPE csequence
                 kind          TYPE string
@@ -109,12 +122,26 @@ ENDCLASS.
 
 CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
 
+  METHOD set_kind.
+    DATA uri TYPE string.
+    uri = request->get_inner_rest_request( )->get_uri( ).
+    is_structure = boolc( to_lower( uri ) CS '/ddic/structures' ).
+  ENDMETHOD.
+
+
   METHOD get.
     DATA version_param TYPE if_adt_tools_core_types=>ty_object-version.
     DATA version TYPE r3state.
 
+    set_kind( request ).
     parse_uri( request ).
     IF is_source = abap_false.
+      IF is_structure = abap_true.
+        zcl_vsp_adt_util=>respond( response     = response
+                                   content_type = co_structure_type
+                                   body         = object_document( ) ).
+        RETURN.
+      ENDIF.
       zcl_vsp_adt_util=>respond( response     = response
                                  content_type = co_content_type
                                  body         = object_document( ) ).
@@ -146,6 +173,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
                 mandatory = abap_false
       IMPORTING value     = action ).
     TRANSLATE action TO UPPER CASE.
+    set_kind( request ).
     IF action IS INITIAL.
       create( request = request response = response ).
       RETURN.
@@ -165,6 +193,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
 
 
   METHOD put.
+    set_kind( request ).
     parse_uri( request ).
     IF is_source = abap_false.
       RAISE EXCEPTION TYPE cx_adt_res_meth_not_supported.
@@ -183,6 +212,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     DATA corrnr TYPE trkorr.
     DATA objname TYPE rsedd0-ddobjname.
 
+    set_kind( request ).
     parse_uri( request ).
     read_header( ).
     check_handle( request ).
@@ -269,7 +299,12 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
           resource_type = 'TABL'
           resource_id   = CONV #( name ).
     ENDIF.
-    IF result-tabclass <> 'TRANSP'.
+    IF is_structure = abap_true.
+      IF result-tabclass <> 'INTTAB' AND result-tabclass <> 'APPEND'.
+        zcl_vsp_adt_txt_format=>raise_not_acceptable(
+          |{ name } is a { result-tabclass } table, not a structure| ).
+      ENDIF.
+    ELSEIF result-tabclass <> 'TRANSP'.
       zcl_vsp_adt_txt_format=>raise_not_acceptable(
         |{ name } is a { result-tabclass } table; only transparent tables are served here| ).
     ENDIF.
@@ -294,6 +329,16 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     lines = source->render( name = name version = version ).
     IF lines IS INITIAL AND version = 'I'.
       lines = source->render( name = name version = 'A' ).
+    ENDIF.
+    IF is_structure = abap_true.
+      CONCATENATE LINES OF lines INTO result SEPARATED BY cl_abap_char_utilities=>newline.
+      IF result IS INITIAL.
+        RAISE EXCEPTION TYPE cx_adt_res_not_found
+          EXPORTING
+            resource_type = 'TABL'
+            resource_id   = CONV #( name ).
+      ENDIF.
+      RETURN.
     ENDIF.
 
     props = |@AbapCatalog.tableCategory : #TRANSPARENT{ cl_abap_char_utilities=>newline }| &&
@@ -332,7 +377,11 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     DATA author TYPE responsibl.
     DATA iso TYPE laiso.
     DATA master_iso TYPE laiso.
+    DATA type TYPE string VALUE 'TABL/DT'.
 
+    IF is_structure = abap_true.
+      type = 'TABL/DS'.
+    ENDIF.
     header = read_header( ).
     SELECT SINGLE devclass masterlang author FROM tadir
       INTO (devclass, masterlang, author)
@@ -352,7 +401,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
       |<?xml version="1.0" encoding="utf-8"?>| &&
       |<blue:blueSource xmlns:blue="http://www.sap.com/wbobj/blue" | &&
       |xmlns:adtcore="http://www.sap.com/adt/core" | &&
-      |adtcore:name="{ esc( header-tabname ) }" adtcore:type="TABL/DT" | &&
+      |adtcore:name="{ esc( header-tabname ) }" adtcore:type="{ type }" | &&
       |adtcore:description="{ esc( header-ddtext ) }" adtcore:descriptionTextLimit="60" | &&
       |adtcore:language="{ iso }" adtcore:masterLanguage="{ master_iso }" | &&
       |adtcore:responsible="{ esc( author ) }" adtcore:version="active">| &&
@@ -388,7 +437,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
 
     SELECT SINGLE tabname FROM dd02l INTO exists WHERE tabname = name.
     IF sy-subrc = 0.
-      zcl_vsp_adt_txt_format=>set_message( |Table { name } already exists| ).
+      zcl_vsp_adt_txt_format=>set_message( |{ name } already exists in the dictionary| ).
       RAISE EXCEPTION TYPE cx_adt_res_already_exists
         EXPORTING
           textid = cx_adt_rest=>create_textid_from_msg_params( ).
@@ -398,14 +447,18 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
 
     dd02v-tabname = name.
     dd02v-ddlanguage = sy-langu.
-    dd02v-tabclass = 'TRANSP'.
     dd02v-ddtext = description.
-    dd02v-contflag = 'A'.
     dd02v-exclass = '1'.
-    dd09v-tabname = name.
-    dd09v-tabkat = '0'.
-    dd09v-tabart = 'APPL0'.
-    dd09v-bufallow = 'N'.
+    IF is_structure = abap_true.
+      dd02v-tabclass = 'INTTAB'.
+    ELSE.
+      dd02v-tabclass = 'TRANSP'.
+      dd02v-contflag = 'A'.
+      dd09v-tabname = name.
+      dd09v-tabkat = '0'.
+      dd09v-tabart = 'APPL0'.
+      dd09v-bufallow = 'N'.
+    ENDIF.
     CALL FUNCTION 'DDIF_TABL_PUT'
       EXPORTING
         name              = name
@@ -430,6 +483,14 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     COMMIT WORK.
 
     response->set_status( cl_rest_status_code=>gc_success_created ).
+    IF is_structure = abap_true.
+      response->set_location( |{ zif_vsp_adt_feature=>co_root }/ddic/structures/| &&
+                              |{ cl_http_utility=>escape_url( to_lower( name ) ) }| ).
+      zcl_vsp_adt_util=>respond( response     = response
+                                 content_type = co_structure_type
+                                 body         = object_document( ) ).
+      RETURN.
+    ENDIF.
     response->set_location( |{ zif_vsp_adt_feature=>co_root }/ddic/tables/| &&
                             |{ cl_http_utility=>escape_url( to_lower( name ) ) }| ).
     zcl_vsp_adt_util=>respond( response     = response
@@ -581,6 +642,11 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     DATA dd35v TYPE dd35vttyp.
     DATA dd36m TYPE dd36mttyp.
 
+    IF is_structure = abap_true.
+      write_structure( lines ).
+      RETURN.
+    ENDIF.
+
     " Take the table header off: the table annotations become DD02V
     " fields, "define table" becomes the "define type" of a structure.
     LOOP AT lines INTO line.
@@ -671,6 +737,48 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
         dd08v_tab         = dd08v
         dd35v_tab         = dd35v
         dd36m_tab         = dd36m
+      EXCEPTIONS
+        tabl_not_found    = 1
+        name_inconsistent = 2
+        tabl_inconsistent = 3
+        put_failure       = 4
+        put_refused       = 5
+        OTHERS            = 6.
+    IF sy-subrc <> 0.
+      zcl_vsp_adt_util=>raise_failure( resource_type = 'TABL' resource_id = name ).
+    ENDIF.
+    CALL FUNCTION 'RS_INSERT_INTO_WORKING_AREA'
+      EXPORTING
+        object   = 'TABL'
+        obj_name = CONV trobj_name( name )
+      EXCEPTIONS
+        OTHERS   = 1.
+    COMMIT WORK.
+  ENDMETHOD.
+
+
+  METHOD write_structure.
+    " A structure is its source: header, fields, keys and helps all come
+    " from it; there are no technical settings.
+    DATA definition TYPE zif_vsp_ddic_source=>ty_definition.
+    DATA dd02v TYPE dd02v.
+    DATA dd09v TYPE dd09v.
+
+    definition = zcl_vsp_ddic_src=>get( parser_kind )->parse( name = name source = lines ).
+    dd02v = definition-header.
+    dd02v-tabname = name.
+    dd02v-ddlanguage = sy-langu.
+    CALL FUNCTION 'DDIF_TABL_PUT'
+      EXPORTING
+        name              = name
+        dd02v_wa          = dd02v
+        dd09l_wa          = dd09v
+      TABLES
+        dd03p_tab         = definition-fields
+        dd05m_tab         = definition-foreign_key_fields
+        dd08v_tab         = definition-foreign_keys
+        dd35v_tab         = definition-value_helps
+        dd36m_tab         = definition-value_help_fields
       EXCEPTIONS
         tabl_not_found    = 1
         name_inconsistent = 2
