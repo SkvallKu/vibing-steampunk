@@ -45,6 +45,13 @@ func TestTunnelURIKeepsTheEscapedPath(t *testing.T) {
 		{"http://h/sap/bc/adt/oo/classes/%2FSDF%2FCL_X?version=active",
 			"/sap/bc/adt/oo/classes/%2FSDF%2FCL_X?version=active"},
 		{"http://h/sap/bc/adt/programs/programs/zprog", "/sap/bc/adt/programs/programs/zprog"},
+		// The logon parameters stay out (7.40 discovery matches its BAdI
+		// filter on the whole URI); the rest is passed on as written.
+		{"http://h/sap/bc/adt/discovery?sap-client=100&sap-language=RU", "/sap/bc/adt/discovery"},
+		{"http://h/sap/bc/adt/programs/programs/zprog?_action=LOCK&accessMode=MODIFY&sap-client=100",
+			"/sap/bc/adt/programs/programs/zprog?_action=LOCK&accessMode=MODIFY"},
+		{"http://h/sap/bc/adt/repository/informationsystem/search?sap-client=100&query=Z%2A&maxResults=5",
+			"/sap/bc/adt/repository/informationsystem/search?query=Z%2A&maxResults=5"},
 	}
 	for _, c := range cases {
 		req, err := http.NewRequest("GET", c.url, nil)
