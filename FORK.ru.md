@@ -41,6 +41,8 @@
 | `fix(saprfc): the RFC tunnel keeps a namespace's %2F escaped` | Туннель передавал SADT_REST_RFC_ENDPOINT раскодированный путь: `/sap/bc/adt/oo/classes/%2fsdf%2fcl_x` превращался в `.../classes//sdf/cl_x`, и любой объект в namespace, стандартный или клиентский, через RFC давал 404. Теперь путь уходит в экранированном виде. |
 | `fix(saprfc): read-table says why it cannot, and no rows is []` | `rfc read-table` на строке шире 512 символов повторял вызов с `USE_ET_DATA_4_RETURN`, которого на 7.50 нет, а на колонке STRING или RAWSTRING заканчивался дампом SAP `ASSIGN ... CASTING`. Теперь оба случая говорят, что делать: меньше полей или data preview (`vsp query`, GetTableContents). Без строк печатается `[]`, а не `null`. |
 | `fix(cli): an error is printed once, and without the usage screen` | Команда, упавшая при выполнении, печатала ошибку, справку по использованию и ошибку ещё раз. Теперь только ошибку; на неверный флаг или аргумент справка по-прежнему выводится. |
+| `fix(saprfc): the RFC tunnel leaves sap-client and sap-language out of the URI` | На 7.40 через туннель discovery приходил пустым: его реализации BAdI выбираются по всему URI запроса, и `?sap-client=…&sap-language=…` не подходил ни под один фильтр. По RFC оба параметра и так берутся из соединения; туннель их больше не передаёт. |
+| `feat(adt): a DDIC structure can be created and written from its source` | Структуру (TABL/DS) можно было только читать. WriteSource и GetSource принимают `STRUCT`; `WriteSource TABL` с исходником `define structure` / `define type` пишет в `/ddic/structures`, а не в `/ddic/tables`, где структур нет; в MCP — `create "STRUCT <имя>"` с исходником. Upstream #253. |
 
 ### Старые релизы (7.40, 7.50)
 

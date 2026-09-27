@@ -39,6 +39,8 @@ each upstream sync. Tags `vX.Y.Z-patch.N` mark the upstream release a build is b
 | `fix(saprfc): the RFC tunnel keeps a namespace's %2F escaped` | The tunnel sent SADT_REST_RFC_ENDPOINT the decoded path, so `/sap/bc/adt/oo/classes/%2fsdf%2fcl_x` became `.../classes//sdf/cl_x`, and every object in a namespace, SAP's or the customer's, was a 404 over RFC. The path now goes as escaped. |
 | `fix(saprfc): read-table says why it cannot, and no rows is []` | `rfc read-table` on a row wider than 512 characters retried with `USE_ET_DATA_4_RETURN`, which 7.50 lacks, and a STRING or RAWSTRING column ended in SAP's `ASSIGN ... CASTING` dump. Both now say what to do instead: fewer fields, or data preview (`vsp query`, GetTableContents). No rows prints `[]`, not `null`. |
 | `fix(cli): an error is printed once, and without the usage screen` | A command that failed at run time printed the error, the usage screen and the error again. Now only the error; a wrong flag or argument still shows usage. |
+| `fix(saprfc): the RFC tunnel leaves sap-client and sap-language out of the URI` | On 7.40 the discovery document came back empty over the tunnel: its BAdI implementations are chosen by the whole request URI, and `?sap-client=…&sap-language=…` matched no filter. Over RFC both are the connection's anyway; the tunnel no longer sends them. |
+| `feat(adt): a DDIC structure can be created and written from its source` | A structure (TABL/DS) could only be read. WriteSource and GetSource take `STRUCT`; `WriteSource TABL` sends a `define structure` / `define type` source to `/ddic/structures`, not to `/ddic/tables`, which serves no structure; MCP `create "STRUCT <name>"` with source. Upstream #253. |
 
 ### Older releases (7.40, 7.50)
 
