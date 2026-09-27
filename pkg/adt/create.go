@@ -175,6 +175,12 @@ var objectTypes = map[CreatableObjectType]objectTypeInfo{
 func (c *Client) CreateObject(ctx context.Context, opts CreateObjectOptions) error {
 	typeInfo, ok := objectTypes[opts.ObjectType]
 	if !ok {
+		if opts.ObjectType == ObjectTypeTable {
+			// A table needs its fields and technical settings in the same
+			// step; the generic create has neither. Say where it is made.
+			return fmt.Errorf("a DDIC table (TABL/DT) is not created here: use create target TABL " +
+				"(CreateTable) with its fields; a structure is TABL/DS")
+		}
 		return fmt.Errorf("unsupported object type: %s", opts.ObjectType)
 	}
 

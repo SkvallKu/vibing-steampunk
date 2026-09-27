@@ -238,7 +238,7 @@ var readOnlyClasses = map[string]surfaceClass{
 	// --- SAP(): edit ---
 	"SAP edit PROG": clsMutate, "SAP edit CLAS": clsMutate, "SAP edit INTF": clsMutate, "SAP edit FUNC": clsMutate,
 	"SAP edit INCL": clsMutate, "SAP edit DDLS": clsMutate, "SAP edit BDEF": clsMutate, "SAP edit SRVD": clsMutate,
-	"SAP edit MSAG": clsMutate, "SAP edit TABL": clsMutate,
+	"SAP edit MSAG": clsMutate, "SAP edit TABL": clsMutate, "SAP edit STRUCT": clsMutate,
 	"SAP edit EDITSOURCE":              clsMutate,
 	"SAP edit LOCK":                    clsMutate,
 	"SAP edit UNLOCK":                  clsRead,
@@ -570,7 +570,7 @@ func actionCases() []actionCase {
 		srcEdit("PROG", "ZDEMO_REPORT"), srcEdit("CLAS", "ZCL_DEMO"), srcEdit("INTF", "ZIF_DEMO"),
 		srcEdit("FUNC", "Z_DEMO_FM"), srcEdit("INCL", "ZDEMO_INCL"), srcEdit("DDLS", "ZDEMO_DDLS"),
 		srcEdit("BDEF", "ZDEMO_BDEF"), srcEdit("SRVD", "ZDEMO_SRV"), srcEdit("MSAG", "ZDEMO_MSG"),
-		srcEdit("TABL", "ZDEMO_TAB"),
+		srcEdit("TABL", "ZDEMO_TAB"), srcEdit("STRUCT", "ZDEMO_STRUCT"),
 		{Name: "SAP edit EDITSOURCE", Action: "edit", Target: "EDITSOURCE", Like: "EditSource"},
 		{Name: "SAP edit LOCK", Action: "edit", Target: "LOCK", Like: "LockObject"},
 		{Name: "SAP edit UNLOCK", Action: "edit", Target: "UNLOCK", Like: "UnlockObject"},

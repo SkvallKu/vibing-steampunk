@@ -16,7 +16,7 @@ import (
 )
 
 // routeCRUDAction routes "edit" for LOCK/UNLOCK/UPDATE_SOURCE/
-// RECOVER_FAILED_CREATE, "create" for OBJECT/DEVC/TABL/CLONE, "delete"
+// RECOVER_FAILED_CREATE, "create" for OBJECT/DEVC/TABL/STRUCT/CLONE, "delete"
 // for OBJECT.
 func (s *Server) routeCRUDAction(ctx context.Context, action, objectType, objectName string, params map[string]any) (*mcp.CallToolResult, bool, error) {
 	if action == "edit" {

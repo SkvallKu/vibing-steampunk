@@ -21,7 +21,7 @@ type CreateTableOptions struct {
 	Fields        []TableField `json:"fields"`                  // Field definitions
 	Transport     string       `json:"transport,omitempty"`     // Transport request (optional for $TMP)
 	DeliveryClass string       `json:"deliveryClass,omitempty"` // A=Application, C=Customizing, L=Temp, etc. (default: A)
-	TableCategory string       `json:"tableCategory,omitempty"` // TRANSPARENT (default), STRUCTURE, etc.
+	TableCategory string       `json:"tableCategory,omitempty"` // TRANSPARENT (default); a structure is not a table category here — see ObjectTypeStructure
 	// ClientDependent decides the client field (issue #254). nil, the default,
 	// keeps the old behaviour for a field list without a client field: a
 	// `key client : abap.clnt` is put in front. When the list already starts
