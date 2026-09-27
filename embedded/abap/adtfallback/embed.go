@@ -56,6 +56,18 @@ var zclVspAdtPkgFeature string
 //go:embed zcl_vsp_adt_util.clas.abap
 var zclVspAdtUtil string
 
+//go:embed zif_vsp_ddic_source.intf.abap
+var zifVspDdicSource string
+
+//go:embed zcl_vsp_ddic_src_sap.clas.abap
+var zclVspDdicSrcSap string
+
+//go:embed zcl_vsp_ddic_src_own.clas.abap
+var zclVspDdicSrcOwn string
+
+//go:embed zcl_vsp_ddic_src.clas.abap
+var zclVspDdicSrc string
+
 //go:embed zcl_vsp_adt_tabl_resource.clas.abap
 var zclVspAdtTablResource string
 
@@ -89,6 +101,10 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_PKG_RESOURCE", zclVspAdtPkgResource, "vsp ADT fallback: packages"},
 		{"CLAS", "ZCL_VSP_ADT_PKG_FEATURE", zclVspAdtPkgFeature, "vsp ADT fallback: packages feature"},
 		{"CLAS", "ZCL_VSP_ADT_UTIL", zclVspAdtUtil, "vsp ADT fallback: shared helpers"},
+		{"INTF", "ZIF_VSP_DDIC_SOURCE", zifVspDdicSource, "vsp ADT fallback: DDIC structure source"},
+		{"CLAS", "ZCL_VSP_DDIC_SRC_SAP", zclVspDdicSrcSap, "vsp ADT fallback: structure source, SAP's"},
+		{"CLAS", "ZCL_VSP_DDIC_SRC_OWN", zclVspDdicSrcOwn, "vsp ADT fallback: structure source, ours"},
+		{"CLAS", "ZCL_VSP_DDIC_SRC", zclVspDdicSrc, "vsp ADT fallback: which structure source"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_RESOURCE", zclVspAdtTablResource, "vsp ADT fallback: database tables"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_FEATURE", zclVspAdtTablFeature, "vsp ADT fallback: tables feature"},
 	}
