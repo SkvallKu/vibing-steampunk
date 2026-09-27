@@ -191,12 +191,12 @@ func runInstallADTFallback(cmd *cobra.Command, _ []string) error {
 
 	// The BAdI runtime buffer takes a while to see a new implementation —
 	// over a minute on a 7.50 after a fresh install, as the buffers of the
-	// application servers synchronize — and a class load a moment to see a
-	// new version: ask for three minutes.
+	// application servers synchronize, more than three minutes on a 7.40 —
+	// and a class load a moment to see a new version: ask for six minutes.
 	var got string
 	for attempt := 0; ; attempt++ {
 		if attempt == 1 {
-			fmt.Fprintf(os.Stderr, "  waiting for %s/info (the BAdI buffer synchronizes, up to 3 minutes) ...\n", adt.FallbackRoot)
+			fmt.Fprintf(os.Stderr, "  waiting for %s/info (the BAdI buffer synchronizes, up to 6 minutes) ...\n", adt.FallbackRoot)
 		}
 		info, err := client.RawGet(ctx, adt.FallbackRoot+"/info", "text/plain")
 		if err == nil {
@@ -206,8 +206,8 @@ func runInstallADTFallback(cmd *cobra.Command, _ []string) error {
 			}
 			err = fmt.Errorf("it reports version %q, not %q", got, adtfallback.Version())
 		}
-		if attempt == 36 {
-			return fmt.Errorf("installed, but GET %s/info after three minutes: %w; run install again later to check", adt.FallbackRoot, err)
+		if attempt == 72 {
+			return fmt.Errorf("installed, but GET %s/info after six minutes: %w; run install again later to check", adt.FallbackRoot, err)
 		}
 		time.Sleep(5 * time.Second)
 	}
