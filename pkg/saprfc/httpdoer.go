@@ -83,10 +83,25 @@ func (d *TunnelDoer) drop(bad *rfc.Client) {
 // tunnelURI is the request line SADT_REST_RFC_ENDPOINT gets: the path as it
 // was sent, still escaped. The decoded Path would turn the %2F of a namespace
 // (/SDF/CL_X → %2fsdf%2fcl_x) into a slash, and ADT answers 404 to that.
+//
+// sap-client and sap-language are left out. They are ICF logon parameters:
+// over RFC the client is the connection's and the language is not taken from
+// the request at all. Kept in, they break 7.40, where the discovery document
+// selects its BAdI implementations by the whole request URI, query included —
+// /sap/bc/adt/discovery?sap-client=100 matches no filter and the document
+// comes back empty. Every other parameter is passed on as it was written.
 func tunnelURI(u *url.URL) string {
 	uri := u.EscapedPath()
-	if u.RawQuery != "" {
-		uri += "?" + u.RawQuery
+	var kept []string
+	for _, p := range strings.Split(u.RawQuery, "&") {
+		name, _, _ := strings.Cut(p, "=")
+		if p == "" || strings.EqualFold(name, "sap-client") || strings.EqualFold(name, "sap-language") {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if len(kept) > 0 {
+		uri += "?" + strings.Join(kept, "&")
 	}
 	return uri
 }
