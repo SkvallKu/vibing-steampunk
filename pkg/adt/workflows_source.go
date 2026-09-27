@@ -100,6 +100,9 @@ func (c *Client) GetSource(ctx context.Context, objectType, name string, opts *G
 	case "DDLS":
 		return c.GetDDLS(ctx, name)
 
+	case "STRUCT":
+		return c.GetStructure(ctx, name)
+
 	case "VIEW":
 		return c.GetView(ctx, name)
 
@@ -140,7 +143,7 @@ func (c *Client) GetSource(ctx context.Context, objectType, name string, opts *G
 		return c.GetEnhancement(ctx, name)
 
 	default:
-		return "", fmt.Errorf("unsupported object type: %s (supported: PROG, CLAS, INTF, FUNC, FUGR, INCL, DDLS, VIEW, BDEF, SRVD, SRVB, MSAG, ENHO)", objectType)
+		return "", fmt.Errorf("unsupported object type: %s (supported: PROG, CLAS, INTF, FUNC, FUGR, INCL, DDLS, STRUCT, VIEW, BDEF, SRVD, SRVB, MSAG, ENHO)", objectType)
 	}
 }
 
@@ -246,6 +249,11 @@ func (c *Client) WriteSource(ctx context.Context, objectType, name, source strin
 
 	objectType = strings.ToUpper(objectType)
 	name = strings.ToUpper(name)
+	// A structure is a TABL too, but its source lives under /ddic/structures:
+	// the table resource does not serve it. The source says which it is.
+	if objectType == string(ObjectTypeStructure) || (objectType == "TABL" && IsStructureSource(source)) {
+		objectType = "STRUCT"
+	}
 
 	result := &WriteSourceResult{
 		ObjectType: objectType,
@@ -269,10 +277,10 @@ func (c *Client) WriteSource(ctx context.Context, objectType, name, source strin
 
 	// Validate object type
 	switch objectType {
-	case "PROG", "CLAS", "INTF", "INCL", "DDLS", "BDEF", "SRVD", "SRVB", "TABL":
+	case "PROG", "CLAS", "INTF", "INCL", "DDLS", "BDEF", "SRVD", "SRVB", "TABL", "STRUCT":
 		// Supported types
 	default:
-		result.Message = fmt.Sprintf("Unsupported object type: %s (supported: PROG, CLAS, INTF, FUNC, INCL, DDLS, BDEF, SRVD, SRVB, TABL)", objectType)
+		result.Message = fmt.Sprintf("Unsupported object type: %s (supported: PROG, CLAS, INTF, FUNC, INCL, DDLS, BDEF, SRVD, SRVB, TABL, STRUCT)", objectType)
 		return result, nil
 	}
 
@@ -313,6 +321,8 @@ func (c *Client) WriteSource(ctx context.Context, objectType, name, source strin
 			_, probeErr = c.GetSRVB(ctx, name)
 		case "TABL":
 			_, probeErr = c.GetTable(ctx, name)
+		case "STRUCT":
+			_, probeErr = c.GetStructure(ctx, name)
 		default:
 			// No existence probe is known for this type, so upsert has nothing
 			// to decide on. Leaving it at "does not exist" is how the previous
@@ -604,11 +614,15 @@ func (c *Client) writeSourceCreate(ctx context.Context, objectType, name, source
 
 		return result, nil
 
-	case "DDLS", "BDEF", "SRVD":
+	case "DDLS", "BDEF", "SRVD", "STRUCT":
 		// Get object type and URL
 		var objType CreatableObjectType
 		var objectURL string
 		switch objectType {
+		case "STRUCT":
+			// Created empty from its blueSource, then written like a DDLS.
+			objType = ObjectTypeStructure
+			objectURL = GetObjectURL(ObjectTypeStructure, name, "")
 		case "DDLS":
 			objType = ObjectTypeDDLS
 			objectURL = GetObjectURL(ObjectTypeDDLS, name, "")
@@ -832,7 +846,8 @@ func (c *Client) writeSourceCreate(ctx context.Context, objectType, name, source
 		// existing table is the part that maps cleanly.
 		result.Message = "A DDIC table cannot be created from source here — creating one needs a DDIC " +
 			"create step this workflow does not have. Editing an existing table does work: create it " +
-			"first (action=create, target=\"TABL <name>\"), then edit its DDL like any other source."
+			"first (action=create, target=\"TABL <name>\"), then edit its DDL like any other source. " +
+			"A structure (define structure / define type) is created from source."
 		return result, nil
 
 	default:
@@ -1073,10 +1088,12 @@ func (c *Client) writeSourceUpdate(ctx context.Context, objectType, name, source
 
 		return result, nil
 
-	case "DDLS", "BDEF", "SRVD", "TABL":
+	case "DDLS", "BDEF", "SRVD", "TABL", "STRUCT":
 		// Get object URL
 		var objectURL string
 		switch objectType {
+		case "STRUCT":
+			objectURL = GetObjectURL(ObjectTypeStructure, name, "")
 		case "DDLS":
 			objectURL = GetObjectURL(ObjectTypeDDLS, name, "")
 		case "BDEF":

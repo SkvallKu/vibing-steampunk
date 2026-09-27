@@ -13,7 +13,7 @@ import (
 )
 
 // routeCRUDAction routes "edit" for LOCK/UNLOCK/UPDATE_SOURCE/
-// RECOVER_FAILED_CREATE, "create" for OBJECT/DEVC/TABL/CLONE, "delete"
+// RECOVER_FAILED_CREATE, "create" for OBJECT/DEVC/TABL/STRUCT/CLONE, "delete"
 // for OBJECT.
 func (s *Server) routeCRUDAction(ctx context.Context, action, objectType, objectName string, params map[string]any) (*mcp.CallToolResult, bool, error) {
 	if action == "edit" {
@@ -41,6 +41,25 @@ func (s *Server) routeCRUDAction(ctx context.Context, action, objectType, object
 			return s.callHandler(ctx, s.handleCreatePackage, params)
 		case "TABL":
 			return s.callHandler(ctx, s.handleCreateTable, params)
+		case "STRUCT":
+			// A structure is created from its source — the same write as
+			// edit STRUCT, told not to overwrite one that exists.
+			name := objectName
+			if name == "" {
+				name = getStringParam(params, "name")
+			}
+			src := getStringParam(params, "source")
+			if name == "" || src == "" {
+				return newToolResultError(`a structure is created from its source: target="STRUCT <name>", ` +
+					`params={"source": "define structure ...", "package": "$TMP", "description": "..."}`), true, nil
+			}
+			args := map[string]any{"object_type": "STRUCT", "name": name, "source": src, "mode": "create"}
+			for _, k := range []string{"description", "package", "transport"} {
+				if v := getStringParam(params, k); v != "" {
+					args[k] = v
+				}
+			}
+			return s.callHandler(ctx, s.handleWriteSource, args)
 		case "CLONE":
 			return s.callHandler(ctx, s.handleCloneObject, params)
 		}

@@ -656,6 +656,12 @@ func (c *Client) packageExists(ctx context.Context, packageName string) bool {
 func (c *Client) CreateObject(ctx context.Context, opts CreateObjectOptions) error {
 	typeInfo, ok := objectTypes[opts.ObjectType]
 	if !ok {
+		if opts.ObjectType == ObjectTypeTable {
+			// A table needs its fields and technical settings in the same
+			// step; the generic create has neither. Say where it is made.
+			return fmt.Errorf("a DDIC table (TABL/DT) is not created here: use create target TABL " +
+				"(CreateTable) with its fields; a structure is TABL/DS")
+		}
 		return fmt.Errorf("unsupported object type: %s", opts.ObjectType)
 	}
 
@@ -1041,6 +1047,8 @@ func GetObjectURL(objectType CreatableObjectType, name string, parentName string
 		// A DDIC table's source is its DDL, at the same shape as the CDS types
 		// above. Addressable all along; nothing asked for it.
 		return fmt.Sprintf("/sap/bc/adt/ddic/tables/%s", url.PathEscape(strings.ToLower(name)))
+	case ObjectTypeStructure:
+		return fmt.Sprintf("/sap/bc/adt/ddic/structures/%s", url.PathEscape(strings.ToLower(name)))
 	case ObjectTypeSRVB:
 		return fmt.Sprintf("/sap/bc/adt/businessservices/bindings/%s", url.PathEscape(strings.ToLower(name)))
 	default:
@@ -1301,7 +1309,7 @@ type CreateTableOptions struct {
 	Fields        []TableField `json:"fields"`                  // Field definitions
 	Transport     string       `json:"transport,omitempty"`     // Transport request (optional for $TMP)
 	DeliveryClass string       `json:"deliveryClass,omitempty"` // A=Application, C=Customizing, L=Temp, etc. (default: A)
-	TableCategory string       `json:"tableCategory,omitempty"` // TRANSPARENT (default), STRUCTURE, etc.
+	TableCategory string       `json:"tableCategory,omitempty"` // TRANSPARENT (default); a structure is not a table category here — see ObjectTypeStructure
 }
 
 // CreateTable creates a new DDIC transparent table from JSON-like options.
