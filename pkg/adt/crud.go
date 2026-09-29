@@ -1060,6 +1060,10 @@ func GetObjectURL(objectType CreatableObjectType, name string, parentName string
 		return fmt.Sprintf("/sap/bc/adt/businessservices/bindings/%s", url.PathEscape(strings.ToLower(name)))
 	case ObjectTypeMessageClass:
 		return messageClassURL(name)
+	case ObjectTypeDomain:
+		return domainURL(name)
+	case ObjectTypeDataElement:
+		return dataElementURL(name)
 	default:
 		return ""
 	}

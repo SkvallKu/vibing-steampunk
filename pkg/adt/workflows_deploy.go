@@ -646,6 +646,10 @@ func (c *Client) buildObjectURLWithParent(objType CreatableObjectType, name, par
 		return fmt.Sprintf("/sap/bc/adt/ddic/srvd/sources/%s", encodedName), nil
 	case ObjectTypeMessageClass:
 		return messageClassURL(name), nil
+	case ObjectTypeDomain:
+		return domainURL(name), nil
+	case ObjectTypeDataElement:
+		return dataElementURL(name), nil
 	default:
 		return "", fmt.Errorf("unsupported object type for URL building: %s", objType)
 	}
