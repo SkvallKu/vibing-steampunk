@@ -104,7 +104,7 @@ func runInstallADTFallback(cmd *cobra.Command, _ []string) error {
 
 	fmt.Fprintf(os.Stderr, "ADT fallback points %s → %s (package %s)\n\n", adtfallback.Version(), systemLabel(params), pkg)
 
-	exists, err := adtFallbackPackageExists(ctx, client, pkg)
+	exists, err := client.PackageExists(ctx, pkg)
 	if err != nil {
 		return fmt.Errorf("checking package %s: %w", pkg, err)
 	}
@@ -157,7 +157,9 @@ func runInstallADTFallback(cmd *cobra.Command, _ []string) error {
 		if err := reportFailed(lines); err != nil {
 			return fmt.Errorf("package %s: %w", pkg, err)
 		}
-		if ok, err := adtFallbackPackageExists(ctx, client, pkg); err != nil || !ok {
+		// The report wrote over RFC, past this client and its cache.
+		client.InvalidateCache()
+		if ok, err := client.PackageExists(ctx, pkg); err != nil || !ok {
 			return fmt.Errorf("package %s: the report created it, but ADT does not see it (%v)", pkg, err)
 		}
 	}
@@ -242,7 +244,7 @@ func runUninstallADTFallback(cmd *cobra.Command, _ []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "  ENHO %-30s %s\n", e, state)
 	}
-	exists, err := adtFallbackPackageExists(ctx, client, pkg)
+	exists, err := client.PackageExists(ctx, pkg)
 	if err != nil {
 		return fmt.Errorf("checking package %s: %w", pkg, err)
 	}
@@ -345,17 +347,6 @@ func printADTFallbackReport(cmd *cobra.Command, mode string) (bool, error) {
 	}
 	fmt.Print(src)
 	return true, nil
-}
-
-// adtFallbackPackageExists reads TDEVC: before 7.5x ADT has no package
-// resource, and GET /sap/bc/adt/packages/{name} answers 404 for every package.
-func adtFallbackPackageExists(ctx context.Context, client *adt.Client, pkg string) (bool, error) {
-	res, err := client.GetTableContents(ctx, "TDEVC", 1,
-		"SELECT DEVCLASS FROM TDEVC WHERE DEVCLASS = '"+strings.ReplaceAll(pkg, "'", "''")+"'")
-	if err != nil {
-		return false, err
-	}
-	return len(res.Rows) > 0, nil
 }
 
 // adtFallbackEnhancements counts the BAdI implementations of each of our

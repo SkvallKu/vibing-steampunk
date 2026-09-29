@@ -46,7 +46,7 @@ func EnsurePackage(ctx context.Context, client Client, name, description string)
 	if !exists {
 		if adt.IsRouterNotFound(createErr) {
 			return false, fmt.Errorf("package %s does not exist, and this release has no ADT resource to create it: "+
-				"create it in SE21 (%v)", name, createErr)
+				"create it in SE21, or install the stand-ins with 'vsp install adt-fallback' (%v)", name, createErr)
 		}
 		if createErr != nil {
 			return false, fmt.Errorf("package create failed and package is still absent: %w", createErr)

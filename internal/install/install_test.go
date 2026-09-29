@@ -87,8 +87,8 @@ func TestEnsurePackage_NoCreateResource(t *testing.T) {
 		createErr:     &adt.APIError{StatusCode: 404, Message: "No suitable resource found", Path: "/sap/bc/adt/packages"},
 	}
 	_, err := EnsurePackage(context.Background(), fake, "ZSYNTHETIC", "Synthetic package")
-	if err == nil || !strings.Contains(err.Error(), "SE21") {
-		t.Fatalf("error = %v, want the SE21 route", err)
+	if err == nil || !strings.Contains(err.Error(), "SE21") || !strings.Contains(err.Error(), "install adt-fallback") {
+		t.Fatalf("error = %v, want the SE21 / install adt-fallback route", err)
 	}
 }
 

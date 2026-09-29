@@ -242,8 +242,8 @@ func TestIsRouterNotFound(t *testing.T) {
 		{&APIError{StatusCode: 500, Message: "x"}, false},
 		{nil, false},
 	} {
-		if got := isRouterNotFound(tc.err); got != tc.want {
-			t.Errorf("isRouterNotFound(%v) = %v, want %v", tc.err, got, tc.want)
+		if got := IsRouterNotFound(tc.err); got != tc.want {
+			t.Errorf("IsRouterNotFound(%v) = %v, want %v", tc.err, got, tc.want)
 		}
 	}
 }
