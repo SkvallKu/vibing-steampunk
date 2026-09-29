@@ -254,11 +254,16 @@ func init() {
 	rootCmd.AddCommand(domaCmd, dtelCmd)
 }
 
-// parseFixValue reads LOW="text" or LOW..HIGH="text".
+// parseFixValue reads LOW="text" or LOW..HIGH="text". Quotes around the
+// text that reach it through the shell's own quoting, as in '01="One"', are
+// not part of the text.
 func parseFixValue(s string) (adt.DomainFixValue, error) {
 	k, text, ok := strings.Cut(s, "=")
 	if !ok || strings.TrimSpace(k) == "" {
 		return adt.DomainFixValue{}, fmt.Errorf("fixed value %q: want LOW=TEXT or LOW..HIGH=TEXT", s)
+	}
+	if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
+		text = text[1 : len(text)-1]
 	}
 	low, high, _ := strings.Cut(k, "..")
 	return adt.DomainFixValue{Low: low, High: high, Text: text}, nil

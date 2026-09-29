@@ -138,6 +138,7 @@ These tools replace 11 granular read/write operations with intelligent parameter
 | `CreateObject` | Create new object (program, class, interface, include, function group, function module, package, **DDLS, BDEF, SRVD, SRVB**) | Expert |
 | `WriteDomain` | Create or change a DDIC domain from JSON properties, then activate | Expert |
 | `WriteDataElement` | Create or change a DDIC data element from JSON properties, then activate | Expert |
+| `EditMessageClass` | Add, change and delete messages of a message class in its master language | Expert |
 | `UpdateSource` | Write source code | Expert |
 | `DeleteObject` | Delete an object | Expert |
 

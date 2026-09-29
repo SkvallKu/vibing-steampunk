@@ -1051,6 +1051,19 @@ func (s *Server) registerCRUDTools(shouldRegister func(string) bool) {
 		), s.handleWriteDataElement)
 	}
 
+	if shouldRegister("EditMessageClass") {
+		s.mcpServer.AddTool(mcp.NewTool("EditMessageClass",
+			mcp.WithDescription("Add, change and delete messages of a message class (SE91) in its master language, which must be the logon language; "+
+				"a text in another language is a translation, WriteMessageClassTexts. Messages not named keep their texts. "+
+				"Takes and releases its own lock; nothing is locked when nothing differs. Create the class first with CreateObject MSAG/N."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Message class name")),
+			mcp.WithObject("messages", mcp.Description(`Messages to add or change, number to text: {"001":"Order & created","002":"Order & not found"}. A list [{"number":"001","text":"..."}] is accepted too`)),
+			mcp.WithArray("delete", mcp.Description(`Numbers of messages to delete: ["003"]`), mcp.Items(map[string]any{"type": "string"})),
+			mcp.WithString("transport", mcp.Description("Transport request; chosen like the editor would when empty")),
+			mcp.WithBoolean("dry_run", mcp.Description("Show what would change and write nothing")),
+		), s.handleEditMessageClass)
+	}
+
 	if shouldRegister("CreateObject") {
 		s.mcpServer.AddTool(mcp.NewTool("CreateObject",
 			mcp.WithDescription("Create a new ABAP object. Supports: PROG/P (program), CLAS/OC (class), INTF/OI (interface), PROG/I (include), FUGR/F (function group), FUGR/FF (function module), DEVC/K (package), DDLS/DF (CDS view), BDEF/BDO (behavior definition), SRVD/SRV (service definition), SRVB/SVB (service binding)"),
