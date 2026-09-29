@@ -265,7 +265,7 @@ type Response struct {
 // cache when one is configured.
 func (t *Transport) Request(ctx context.Context, path string, opts *RequestOptions) (*Response, error) {
 	resp, err := t.requestCached(ctx, path, opts)
-	if err == nil || t.fallback == nil || !isRouterNotFound(err) || isDiscoveryPath(path) {
+	if err == nil || t.fallback == nil || !IsRouterNotFound(err) || isDiscoveryPath(path) {
 		return resp, err
 	}
 	alt := t.fallback(ctx, path)

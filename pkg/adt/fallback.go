@@ -2,7 +2,6 @@ package adt
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -71,18 +70,6 @@ func (c *Client) FallbackPath(ctx context.Context, path string) string {
 
 func underPath(path, prefix string) bool {
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
-}
-
-// isRouterNotFound tells a 404 of the ADT router — no application for the
-// path, or no resource in the application — from a resource's own 404 for
-// an object that does not exist, which comes as an ADT exception document.
-// Only the first can mean the resource is served somewhere else.
-func isRouterNotFound(err error) bool {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
-		return false
-	}
-	return !strings.Contains(apiErr.Message, "<exc:exception") && !strings.Contains(apiErr.Message, ":exception ")
 }
 
 func isDiscoveryPath(path string) bool {
