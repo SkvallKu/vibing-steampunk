@@ -487,7 +487,7 @@ func (c *Client) listTransportsViaSQLQuery(ctx context.Context, user, types, sta
 	query := `SELECT e070~TRKORR, e070~TRFUNCTION, e070~TRSTATUS, e070~TARSYSTEM,
 		e070~AS4USER, e070~AS4DATE, e070~AS4TIME, e07t~AS4TEXT
 		FROM E070 AS e070
-		LEFT OUTER JOIN E07T AS e07t ON e070~TRKORR = e07t~TRKORR AND e07t~LANGU = '` + sapLanguageKey(c.config.Language) + `'
+		LEFT OUTER JOIN E07T AS e07t ON e070~TRKORR = e07t~TRKORR AND e07t~LANGU = '` + SAPLanguageKey(c.config.Language) + `'
 		WHERE ` + strings.Join(conditions, "\n\t\tAND ") + `
 		ORDER BY e070~TRKORR DESCENDING`
 

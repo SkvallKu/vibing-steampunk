@@ -47,3 +47,17 @@ func TestResolveWiresSaprouter(t *testing.T) {
 		t.Fatalf("Router = %q, want the per-system value", p.Router)
 	}
 }
+
+// The RFC logon takes the one-character SAP key, which is not always the
+// ISO code's first letter.
+func TestResolveLanguageKey(t *testing.T) {
+	for lang, want := range map[string]string{"": "E", "RU": "R", "de": "D", "ZH": "1", "UK": "8", "FI": "U", "R": "R"} {
+		p, err := Resolve(Input{URL: "https://sap.example:44300", User: "DEV", Password: "pw", Client: "100", Language: lang})
+		if err != nil {
+			t.Fatalf("Resolve: %v", err)
+		}
+		if p.Language != want {
+			t.Errorf("Language %q -> %q, want %q", lang, p.Language, want)
+		}
+	}
+}

@@ -310,10 +310,10 @@ func TestSQLLetterList(t *testing.T) {
 	if got := sqlLetterList("DR", map[string]string{"D": "'D', 'L'", "R": "'R', 'N'"}); got != "'D', 'L', 'R', 'N'" {
 		t.Errorf("got %q", got)
 	}
-	if got := sapLanguageKey("DE"); got != "D" {
+	if got := SAPLanguageKey("DE"); got != "D" {
 		t.Errorf("DE -> %q", got)
 	}
-	if got := sapLanguageKey(""); got != "E" {
+	if got := SAPLanguageKey(""); got != "E" {
 		t.Errorf("empty -> %q", got)
 	}
 }

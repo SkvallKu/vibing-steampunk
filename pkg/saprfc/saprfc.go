@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/oisee/open-rfc-go/rfc"
+	"github.com/oisee/vibing-steampunk/pkg/adt"
 )
 
 // Params is a resolved RFC destination.
@@ -134,7 +135,7 @@ func Resolve(in Input) (Params, error) {
 		Client:        firstNonEmpty(in.Client, "001"),
 		User:          user,
 		Password:      Secret(password),
-		Language:      lang[:1],
+		Language:      adt.SAPLanguageKey(lang),
 		Router:        normalizeRoutePrefix(firstNonEmpty(in.SaprouterFlag, in.RFCSaprouter)),
 		CpicStreaming: in.RFCCpicStreaming,
 	}, nil

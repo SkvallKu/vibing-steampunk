@@ -587,36 +587,27 @@ func transportStatusText(status string) string {
 	return ""
 }
 
-// sapLanguageKey maps a session language (ISO code or SAP key) to the
-// one-character key E07T stores.
-func sapLanguageKey(lang string) string {
+// SAPLanguageKey maps a session language (ISO code or SAP key) to the
+// one-character key SAP stores (T002-SPRAS): E07T, TSTCT, and the RFC logon.
+// The key is not always the ISO code's first letter: ZH is 1, UK is 8, and
+// U is Finnish.
+func SAPLanguageKey(lang string) string {
 	l := strings.ToUpper(strings.TrimSpace(lang))
-	switch l {
-	case "":
+	if l == "" {
 		return "E"
-	case "DE":
-		return "D"
-	case "EN":
-		return "E"
-	case "FR":
-		return "F"
-	case "IT":
-		return "I"
-	case "ES":
-		return "S"
-	case "NL":
-		return "N"
-	case "PT":
-		return "P"
-	case "RU":
-		return "R"
-	case "JA":
-		return "J"
-	case "ZH":
-		return "1"
 	}
 	if len(l) == 1 {
 		return l
 	}
+	if k, ok := sapLanguageKeys[l]; ok {
+		return k
+	}
 	return l[:1]
+}
+
+var sapLanguageKeys = map[string]string{
+	"AR": "A", "BG": "W", "CS": "C", "DA": "K", "DE": "D", "EL": "G", "EN": "E", "ES": "S",
+	"FI": "U", "FR": "F", "HE": "B", "HR": "6", "HU": "H", "IT": "I", "JA": "J", "KO": "3",
+	"NL": "N", "NO": "O", "PL": "L", "PT": "P", "RO": "4", "RU": "R", "SK": "Q", "SL": "5",
+	"SR": "0", "SV": "V", "TH": "2", "TR": "T", "UK": "8", "ZF": "M", "ZH": "1",
 }

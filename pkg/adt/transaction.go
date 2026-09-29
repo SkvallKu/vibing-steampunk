@@ -132,7 +132,7 @@ func (c *Client) transactionHeaderFromTables(ctx context.Context, tran *Transact
 	if err != nil {
 		failed = append(failed, fmt.Sprintf("TSTCT: %v", err))
 	} else {
-		lang := sapLanguageKey(c.config.Language)
+		lang := SAPLanguageKey(c.config.Language)
 		for _, r := range texts.Rows {
 			if tran.Description == "" || rowString(r, "SPRSL") == lang {
 				tran.Description = rowString(r, "TTEXT")
