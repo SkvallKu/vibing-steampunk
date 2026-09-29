@@ -8,49 +8,9 @@ import (
 	"strings"
 )
 
-// --- Transaction Operations ---
-
-// Transaction represents an SAP transaction.
-type Transaction struct {
-	Name        string
-	Description string
-	Program     string
-}
-
-// GetTransaction retrieves information about a transaction.
 // dataElementAccept asks for a data element in either version: 7.50 serves
 // only v1, 7.57 v2, and each refuses an Accept naming only the other with 406.
 const dataElementAccept = "application/vnd.sap.adt.dataelements.v2+xml, application/vnd.sap.adt.dataelements.v1+xml"
-
-func (c *Client) GetTransaction(ctx context.Context, tcode string) (*Transaction, error) {
-	tcode = strings.ToUpper(tcode)
-
-	resp, err := c.transport.Request(ctx, fmt.Sprintf("/sap/bc/adt/vit/wb/object_type/TRAN/object_name/%s", tcode), &RequestOptions{
-		Method: http.MethodGet,
-		Accept: "application/xml",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("getting transaction: %w", err)
-	}
-
-	// Parse transaction info
-	type tranInfo struct {
-		Name        string `xml:"name,attr"`
-		Description string `xml:"description,attr"`
-		Program     string `xml:"program,attr"`
-	}
-
-	var ti tranInfo
-	if err := xml.Unmarshal(resp.Body, &ti); err != nil {
-		return nil, fmt.Errorf("parsing transaction: %w", err)
-	}
-
-	return &Transaction{
-		Name:        ti.Name,
-		Description: ti.Description,
-		Program:     ti.Program,
-	}, nil
-}
 
 // --- Type Info Operations ---
 
