@@ -64,6 +64,34 @@ func (c *Client) CheckTransport(ctx context.Context, objectURL, devClass, operat
 	if operation == "" {
 		operation = "I"
 	}
+	uri := c.FallbackPathIfKnown(ctx, objectURL)
+	check, err := c.checkTransportAt(ctx, uri, devClass, operation)
+	// The check maps the URI to an object, and a standard path the release
+	// does not serve has no mapping: 7.50 answers 400 "No URI-Mapping defined
+	// for URI", 7.40 dumps. Before the first router 404 of a session the
+	// stand-in is not known yet, so a failed check asks the discovery once
+	// and repeats with the stand-in, when there is one.
+	if err != nil && unmappedURIError(err) {
+		if alt := c.FallbackPath(ctx, objectURL); alt != uri {
+			return c.checkTransportAt(ctx, alt, devClass, operation)
+		}
+	}
+	return check, err
+}
+
+// unmappedURIError is how the transport check refuses a URI the release does
+// not serve: 400 "No URI-Mapping defined" (7.50), a 500 dump (7.40). Any other
+// failure is not about the path, and the stand-in would not answer it better.
+func unmappedURIError(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusInternalServerError ||
+		apiErr.StatusCode == http.StatusBadRequest && strings.Contains(apiErr.Message, "No URI-Mapping")
+}
+
+func (c *Client) checkTransportAt(ctx context.Context, uri, devClass, operation string) (*TransportCheck, error) {
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
@@ -73,7 +101,7 @@ func (c *Client) CheckTransport(ctx context.Context, objectURL, devClass, operat
       <URI>%s</URI>
     </DATA>
   </asx:values>
-</asx:abap>`, escapeXMLAttr(strings.ToUpper(devClass)), operation, escapeXMLAttr(c.FallbackPathIfKnown(ctx, objectURL)))
+</asx:abap>`, escapeXMLAttr(strings.ToUpper(devClass)), operation, escapeXMLAttr(uri))
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/cts/transportchecks", &RequestOptions{
 		Method:      http.MethodPost,
 		Body:        []byte(body),
@@ -81,7 +109,7 @@ func (c *Client) CheckTransport(ctx context.Context, objectURL, devClass, operat
 		Accept:      "application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.transport.service.checkData",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("transport check for %s: %w", objectURL, err)
+		return nil, fmt.Errorf("transport check for %s: %w", uri, err)
 	}
 	return parseTransportCheck(resp.Body)
 }

@@ -307,3 +307,58 @@ func TestActivationNamesTheStandInOnceItIsKnown(t *testing.T) {
 		t.Errorf("a standard object keeps its URI: %s", bodies[0])
 	}
 }
+
+// The transport check runs before the lock, often before any request of the
+// session has met the router's 404, so the stand-in is not known yet. The
+// check names the standard path of a resource the release lacks, SAP finds
+// no mapping for it and the check fails — a transportable object then went
+// to SAP's own "Generated Request" (7.40, 2026-09-27; 400 on 7.50).
+func TestTransportCheckRetriesWithTheStandIn(t *testing.T) {
+	var mu sync.Mutex
+	var uris []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		switch r.URL.Path {
+		case "/sap/bc/adt/discovery":
+			w.Write([]byte(discoveryWithStandIn))
+		case "/sap/bc/adt/cts/transportchecks":
+			b, _ := io.ReadAll(r.Body)
+			body := string(b)
+			uri := body[strings.Index(body, "<URI>")+5 : strings.Index(body, "</URI>")]
+			mu.Lock()
+			uris = append(uris, uri)
+			mu.Unlock()
+			if !strings.HasPrefix(uri, "/sap/bc/adt/zvsp/") {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`<?xml version="1.0"?><exc:exception xmlns:exc="x"><message lang="EN">No URI-Mapping defined for URI</message></exc:exception>`))
+				return
+			}
+			w.Write([]byte(`<asx:abap xmlns:asx="http://www.sap.com/abapxml"><asx:values><DATA><DEVCLASS>ZPKG</DEVCLASS><RECORDING>X</RECORDING>` +
+				`<REQUESTS><CTS_REQUEST><REQ_HEADER><TRKORR>TR-EXAMPLE</TRKORR></REQ_HEADER></CTS_REQUEST></REQUESTS></DATA></asx:values></asx:abap>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	check, err := c.CheckTransport(context.Background(), "/sap/bc/adt/textelements/programs/zdemo", "", "")
+	if err != nil {
+		t.Fatalf("CheckTransport: %v (uris %v)", err, uris)
+	}
+	if len(check.Candidates) != 1 || check.Candidates[0].Number != "TR-EXAMPLE" {
+		t.Errorf("candidates = %+v", check.Candidates)
+	}
+	if len(uris) != 2 || uris[1] != "/sap/bc/adt/zvsp/textelements/programs/zdemo" {
+		t.Errorf("checked %v; want the standard path, then the stand-in", uris)
+	}
+
+	// A check that fails for a path with no stand-in is not repeated.
+	uris = nil
+	if _, err := c.CheckTransport(context.Background(), "/sap/bc/adt/oo/classes/zcl_demo", "", ""); err == nil {
+		t.Error("a path with no stand-in must keep its error")
+	}
+	if len(uris) != 1 {
+		t.Errorf("checked %v; want one attempt", uris)
+	}
+}
