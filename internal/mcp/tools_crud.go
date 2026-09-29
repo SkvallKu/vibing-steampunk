@@ -59,6 +59,35 @@ func (s *Server) registerCRUDTools(shouldRegister func(string) bool) {
 		), s.handleUpdateSource)
 	}
 
+	if shouldRegister("WriteDomain") {
+		s.mcpServer.AddTool(mcp.NewTool("WriteDomain",
+			mcp.WithDescription("Create or change a DDIC domain and activate it. properties is a JSON object with the fields of GetDomain to set: "+
+				`{"dataType":"CHAR","length":2,"outputLength":2,"lowercase":false,"conversionExit":"","valueTable":"","fixValues":[{"low":"01","text":"First"},{"low":"10","high":"15","text":"Range"}]}. `+
+				"On change the fields not named keep their values; fixValues, when named, replace all fixed values. Texts are the master language's; a new domain's is the logon language."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Domain name")),
+			mcp.WithBoolean("create", mcp.Description("Create the domain (package and description required); otherwise it is changed")),
+			mcp.WithString("package", mcp.Description("Package, for create")),
+			mcp.WithString("description", mcp.Description("Short text (60)")),
+			mcp.WithString("properties", mcp.Description("JSON object with the domain fields to set")),
+			mcp.WithString("transport", mcp.Description("Transport request; chosen like the editor would when empty")),
+		), s.handleWriteDomain)
+	}
+
+	if shouldRegister("WriteDataElement") {
+		s.mcpServer.AddTool(mcp.NewTool("WriteDataElement",
+			mcp.WithDescription("Create or change a DDIC data element and activate it. properties is a JSON object with the fields of GetDataElement to set: "+
+				`{"typeKind":"domain","typeName":"ZDOMAIN"} or {"typeKind":"predefinedAbapType","dataType":"CHAR","length":10}, `+
+				`labels {"shortLabel":"..","mediumLabel":"..","longLabel":"..","headingLabel":".."}, "searchHelp", "setGetParameter", "changeDocument". `+
+				"typeKind is domain, predefinedAbapType, refToPredefinedAbapType, refToDictionaryType or refToClifType. A changed label gets its field's full length unless its length is named. Texts are the master language's; a new data element's is the logon language."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Data element name")),
+			mcp.WithBoolean("create", mcp.Description("Create the data element (package and description required); otherwise it is changed")),
+			mcp.WithString("package", mcp.Description("Package, for create")),
+			mcp.WithString("description", mcp.Description("Short text (60)")),
+			mcp.WithString("properties", mcp.Description("JSON object with the data element fields to set")),
+			mcp.WithString("transport", mcp.Description("Transport request; chosen like the editor would when empty")),
+		), s.handleWriteDataElement)
+	}
+
 	if shouldRegister("CreateObject") {
 		s.mcpServer.AddTool(mcp.NewTool("CreateObject",
 			mcp.WithDescription("Create a new ABAP object. Supports: PROG/P (program), CLAS/OC (class), INTF/OI (interface), PROG/I (include), FUGR/F (function group), FUGR/FF (function module), DEVC/K (package), DDLS/DF (CDS view), BDEF/BDO (behavior definition), SRVD/SRV (service definition), SRVB/SVB (service binding), MSAG/N (message class)"),

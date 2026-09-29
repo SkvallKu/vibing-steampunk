@@ -227,6 +227,20 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 		), s.handleGetTypeInfo)
 	}
 
+	if shouldRegister("GetDomain") {
+		s.mcpServer.AddTool(mcp.NewTool("GetDomain",
+			mcp.WithDescription("Read a DDIC domain: data type, length, output characteristics, value table, fixed values. The resource exists from 7.5x on (7.57 has it, 7.50 not)."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Domain name")),
+		), s.handleGetDomain)
+	}
+
+	if shouldRegister("GetDataElement") {
+		s.mcpServer.AddTool(mcp.NewTool("GetDataElement",
+			mcp.WithDescription("Read a DDIC data element: type (domain, predefined or reference), the four field labels (in the master language), search help, SET/GET parameter."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Data element name")),
+		), s.handleGetDataElement)
+	}
+
 	if shouldRegister("GetAPIReleaseState") {
 		s.mcpServer.AddTool(mcp.NewTool("GetAPIReleaseState",
 			mcp.WithDescription("Check API release state for S/4HANA Clean Core / ABAP Cloud compatibility. Returns whether an object is released for cloud development and key user apps. Use SearchObject first to get the object URI."),

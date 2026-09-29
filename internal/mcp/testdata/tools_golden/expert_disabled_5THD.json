@@ -1924,6 +1924,31 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "Read a DDIC data element: type (domain, predefined or reference), the four field labels (in the master language), search help, SET/GET parameter.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Data element name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "GetDataElement"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetDataElement-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "Get the text labels (short/medium/long/heading) of a data element in a specific language. Useful for checking translations of DDIC texts.",
       "inputSchema": {
         "properties": {
@@ -1945,6 +1970,31 @@
       "name": "GetDataElementLabels"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetDataElementLabels-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Read a DDIC domain: data type, length, output characteristics, value table, fixed values. The resource exists from 7.5x on (7.57 has it, 7.50 not).",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Domain name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "GetDomain"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetDomain-fm"
   },
   {
     "tool": {
@@ -4326,6 +4376,96 @@
       "name": "WriteClass"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteClass-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Create or change a DDIC data element and activate it. properties is a JSON object with the fields of GetDataElement to set: {\"typeKind\":\"domain\",\"typeName\":\"ZDOMAIN\"} or {\"typeKind\":\"predefinedAbapType\",\"dataType\":\"CHAR\",\"length\":10}, labels {\"shortLabel\":\"..\",\"mediumLabel\":\"..\",\"longLabel\":\"..\",\"headingLabel\":\"..\"}, \"searchHelp\", \"setGetParameter\", \"changeDocument\". typeKind is domain, predefinedAbapType, refToPredefinedAbapType, refToDictionaryType or refToClifType. A changed label gets its field's full length unless its length is named. Texts are the master language's; a new data element's is the logon language.",
+      "inputSchema": {
+        "properties": {
+          "create": {
+            "description": "Create the data element (package and description required); otherwise it is changed",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Short text (60)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Data element name",
+            "type": "string"
+          },
+          "package": {
+            "description": "Package, for create",
+            "type": "string"
+          },
+          "properties": {
+            "description": "JSON object with the data element fields to set",
+            "type": "string"
+          },
+          "transport": {
+            "description": "Transport request; chosen like the editor would when empty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "WriteDataElement"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteDataElement-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Create or change a DDIC domain and activate it. properties is a JSON object with the fields of GetDomain to set: {\"dataType\":\"CHAR\",\"length\":2,\"outputLength\":2,\"lowercase\":false,\"conversionExit\":\"\",\"valueTable\":\"\",\"fixValues\":[{\"low\":\"01\",\"text\":\"First\"},{\"low\":\"10\",\"high\":\"15\",\"text\":\"Range\"}]}. On change the fields not named keep their values; fixValues, when named, replace all fixed values. Texts are the master language's; a new domain's is the logon language.",
+      "inputSchema": {
+        "properties": {
+          "create": {
+            "description": "Create the domain (package and description required); otherwise it is changed",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Short text (60)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Domain name",
+            "type": "string"
+          },
+          "package": {
+            "description": "Package, for create",
+            "type": "string"
+          },
+          "properties": {
+            "description": "JSON object with the domain fields to set",
+            "type": "string"
+          },
+          "transport": {
+            "description": "Transport request; chosen like the editor would when empty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "WriteDomain"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteDomain-fm"
   },
   {
     "tool": {
