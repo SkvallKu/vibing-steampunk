@@ -109,7 +109,7 @@ func (c *Client) GetDataElementLabels(ctx context.Context, name, lang string) (*
 		// anybody. Checked against 7.58 with both a plain and a namespaced
 		// element, because a 406 on one name and a 406 on all names are
 		// different bugs.
-		Accept:           "application/vnd.sap.adt.dataelements.v2+xml",
+		Accept:           dataElementAccept, // v1 for 7.50, which refuses a v2-only Accept with 406 too
 		OverrideLanguage: lang,
 	})
 	if err != nil {
