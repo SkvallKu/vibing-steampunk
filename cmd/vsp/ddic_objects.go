@@ -14,7 +14,8 @@ import (
 var domaCmd = &cobra.Command{
 	Use:   "doma",
 	Short: "Domains (SE11): read, create, change",
-	Long: `A DDIC domain over ADT (/sap/bc/adt/ddic/domains; 7.57 has it, 7.50 not).
+	Long: `A DDIC domain over ADT (/sap/bc/adt/ddic/domains, or its adt-fallback
+stand-in where the release has none).
 
   vsp doma get ZDEMO_KIND
   vsp doma create ZDEMO_KIND --package ZPKG --description "Demo kind" --type CHAR --length 2 \
@@ -32,8 +33,8 @@ writes nothing.`,
 var dtelCmd = &cobra.Command{
 	Use:   "dtel",
 	Short: "Data elements (SE11): read, create, change",
-	Long: `A DDIC data element over ADT (/sap/bc/adt/ddic/dataelements; 7.50 has
-it, 7.40 not).
+	Long: `A DDIC data element over ADT (/sap/bc/adt/ddic/dataelements, or its
+adt-fallback stand-in where the release has none).
 
   vsp dtel get ZDEMO_KIND
   vsp dtel create ZDEMO_KIND --package ZPKG --description "Demo kind" --domain ZDEMO_KIND \

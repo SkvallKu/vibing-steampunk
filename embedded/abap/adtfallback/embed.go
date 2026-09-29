@@ -80,6 +80,21 @@ var zclVspAdtTablFeature string
 //go:embed zcl_vsp_adt_stru_feature.clas.abap
 var zclVspAdtStruFeature string
 
+//go:embed zcl_vsp_adt_dd_resource.clas.abap
+var zclVspAdtDdResource string
+
+//go:embed zcl_vsp_adt_doma_resource.clas.abap
+var zclVspAdtDomaResource string
+
+//go:embed zcl_vsp_adt_doma_feature.clas.abap
+var zclVspAdtDomaFeature string
+
+//go:embed zcl_vsp_adt_dtel_resource.clas.abap
+var zclVspAdtDtelResource string
+
+//go:embed zcl_vsp_adt_dtel_feature.clas.abap
+var zclVspAdtDtelFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -115,6 +130,11 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_TABL_RESOURCE", zclVspAdtTablResource, "vsp ADT fallback: database tables"},
 		{"CLAS", "ZCL_VSP_ADT_TABL_FEATURE", zclVspAdtTablFeature, "vsp ADT fallback: tables feature"},
 		{"CLAS", "ZCL_VSP_ADT_STRU_FEATURE", zclVspAdtStruFeature, "vsp ADT fallback: structures feature"},
+		{"CLAS", "ZCL_VSP_ADT_DD_RESOURCE", zclVspAdtDdResource, "vsp ADT fallback: DDIC object resource"},
+		{"CLAS", "ZCL_VSP_ADT_DOMA_RESOURCE", zclVspAdtDomaResource, "vsp ADT fallback: domains"},
+		{"CLAS", "ZCL_VSP_ADT_DOMA_FEATURE", zclVspAdtDomaFeature, "vsp ADT fallback: domains feature"},
+		{"CLAS", "ZCL_VSP_ADT_DTEL_RESOURCE", zclVspAdtDtelResource, "vsp ADT fallback: data elements"},
+		{"CLAS", "ZCL_VSP_ADT_DTEL_FEATURE", zclVspAdtDtelFeature, "vsp ADT fallback: data elements feature"},
 	}
 }
 

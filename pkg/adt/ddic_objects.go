@@ -17,8 +17,9 @@ import (
 // write reads the object, changes what it was asked to and puts all of it
 // back. The documents are the same on every release that has the resource
 // (7.50 serves data elements as v1, 7.57 both as v2, element for element
-// alike). A release without the resource — domains on 7.50, both on
-// 7.40 — answers with the ADT router's 404.
+// alike). Where a release lacks the resource — domains on 7.50, both on
+// 7.40 — adt-fallback serves the same document under /sap/bc/adt/zvsp,
+// and the transport retries there on the router's 404.
 //
 // A new object is created empty (CreateObject), then written and activated
 // like any change. The texts the GET serves are the master language's
