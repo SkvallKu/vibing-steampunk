@@ -33,6 +33,10 @@ func GetObjectURL(objectType CreatableObjectType, name string, parentName string
 		return fmt.Sprintf("/sap/bc/adt/packages/%s", encodedName)
 	case ObjectTypeMessageClass:
 		return fmt.Sprintf("/sap/bc/adt/messageclass/%s", url.PathEscape(strings.ToLower(name)))
+	case ObjectTypeDomain:
+		return domainURL(name)
+	case ObjectTypeDataElement:
+		return dataElementURL(name)
 	// RAP object types - use lowercase for CDS objects
 	case ObjectTypeDDLS:
 		return fmt.Sprintf("/sap/bc/adt/ddic/ddl/sources/%s", url.PathEscape(strings.ToLower(name)))
