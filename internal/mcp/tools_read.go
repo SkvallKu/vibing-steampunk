@@ -229,7 +229,7 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetDomain") {
 		s.mcpServer.AddTool(mcp.NewTool("GetDomain",
-			mcp.WithDescription("Read a DDIC domain: data type, length, output characteristics, value table, fixed values. The resource exists from 7.5x on (7.57 has it, 7.50 not)."),
+			mcp.WithDescription("Read a DDIC domain: data type, length, output characteristics, value table, fixed values. Served by the standard resource or, where the release has none, by adt-fallback."),
 			mcp.WithString("name", mcp.Required(), mcp.Description("Domain name")),
 		), s.handleGetDomain)
 	}
