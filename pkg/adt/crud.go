@@ -294,6 +294,10 @@ type CreateObjectOptions struct {
 
 	// For BDEF: source code (required for creation - ADT API embeds source in creation request)
 	Source string `json:"source,omitempty"`
+
+	// Language (ISO) of a message class's texts, its master language; the
+	// logon language when empty.
+	Language string `json:"language,omitempty"`
 }
 
 // objectTypeInfo contains metadata for creating object types.
@@ -738,6 +742,9 @@ func (c *Client) CreateObject(ctx context.Context, opts CreateObjectOptions) err
 	if defaultResponsible == "" {
 		defaultResponsible = "DDIC" // Fallback to standard development user
 	}
+	if opts.Language == "" {
+		opts.Language = c.config.Language
+	}
 	body := buildCreateObjectBody(opts, typeInfo, defaultResponsible)
 
 	params := url.Values{}
@@ -1051,6 +1058,8 @@ func GetObjectURL(objectType CreatableObjectType, name string, parentName string
 		return fmt.Sprintf("/sap/bc/adt/ddic/structures/%s", url.PathEscape(strings.ToLower(name)))
 	case ObjectTypeSRVB:
 		return fmt.Sprintf("/sap/bc/adt/businessservices/bindings/%s", url.PathEscape(strings.ToLower(name)))
+	case ObjectTypeMessageClass:
+		return messageClassURL(name)
 	default:
 		return ""
 	}
