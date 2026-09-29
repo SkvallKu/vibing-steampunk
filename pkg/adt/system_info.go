@@ -18,6 +18,10 @@ type Transaction struct {
 }
 
 // GetTransaction retrieves information about a transaction.
+// dataElementAccept asks for a data element in either version: 7.50 serves
+// only v1, 7.57 v2, and each refuses an Accept naming only the other with 406.
+const dataElementAccept = "application/vnd.sap.adt.dataelements.v2+xml, application/vnd.sap.adt.dataelements.v1+xml"
+
 func (c *Client) GetTransaction(ctx context.Context, tcode string) (*Transaction, error) {
 	tcode = strings.ToUpper(tcode)
 
@@ -90,7 +94,7 @@ func (c *Client) GetTypeInfo(ctx context.Context, typeName string) (*TypeInfo, e
 		// to anybody. GetDataElementLabels in i18n.go hit the identical bug on
 		// the identical endpoint and was fixed there; this twin was missed, so
 		// the same 406 survived here. Keep the two in step.
-		Accept: "application/vnd.sap.adt.dataelements.v2+xml",
+		Accept: dataElementAccept, // v1 for 7.50, which refuses a v2-only Accept with 406 too
 	})
 	if err != nil {
 		return nil, fmt.Errorf("getting type info: %w", err)
