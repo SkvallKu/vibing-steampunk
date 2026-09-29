@@ -106,11 +106,32 @@ func tunnelURI(u *url.URL) string {
 	return uri
 }
 
+// checkLanguage refuses a request for another language than the logon's.
+// Over HTTP sap-language logs each request on in its language; over RFC the
+// session has the one it logged on with, and tunnelURI drops the parameter.
+// Passed through, a read in DE answers in the logon language and looks right,
+// and a write in DE overwrites the logon language's texts.
+func (d *TunnelDoer) checkLanguage(u *url.URL) error {
+	asked := u.Query().Get("sap-language")
+	if asked == "" {
+		return nil
+	}
+	logon := adt.SAPLanguageKey(d.dest.Language)
+	if adt.SAPLanguageKey(asked) == logon {
+		return nil
+	}
+	return fmt.Errorf("RFC tunnel: this request asks for language %s, but over RFC every request runs in the logon language (%s); "+
+		"use a system profile whose language is %s", strings.ToUpper(asked), logon, strings.ToUpper(asked))
+}
+
 // Do implements adt.HTTPDoer by tunnelling req through SADT_REST_RFC_ENDPOINT
 // and translating the answer back into an *http.Response. Everything above it
 // in pkg/adt — CSRF, safety gating, caching, response parsing — is unaware
 // its request never touched a socket.
 func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
+	if err := d.checkLanguage(req.URL); err != nil {
+		return nil, err
+	}
 	ctx := req.Context()
 	c, err := d.conn(ctx)
 	if err != nil {

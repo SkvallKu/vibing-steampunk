@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/oisee/open-rfc-go/rfc"
@@ -60,6 +61,47 @@ func TestTunnelURIKeepsTheEscapedPath(t *testing.T) {
 		}
 		if got := tunnelURI(req.URL); got != c.want {
 			t.Errorf("tunnelURI(%s) = %s, want %s", c.url, got, c.want)
+		}
+	}
+}
+
+// Over RFC the session's language is the logon's, whatever sap-language
+// says. A request for another language is refused before anything is sent:
+// passed through, a read would answer in the logon language and a write
+// would overwrite its texts.
+func TestTunnelRefusesAnotherLanguage(t *testing.T) {
+	cases := []struct {
+		logon, url string
+		refused    bool
+	}{
+		{"R", "http://h/sap/bc/adt/programs/programs/zprog?sap-client=100&sap-language=RU", false},
+		{"R", "http://h/sap/bc/adt/programs/programs/zprog?sap-language=ru", false},
+		{"R", "http://h/sap/bc/adt/programs/programs/zprog?sap-language=R", false},
+		{"R", "http://h/sap/bc/adt/programs/programs/zprog", false},
+		{"1", "http://h/sap/bc/adt/discovery?sap-language=ZH", false},
+		{"R", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=DE", true},
+		{"E", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=RU", true},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest("GET", c.url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := NewTunnelDoer(Params{Language: c.logon})
+		err = d.checkLanguage(req.URL)
+		if (err != nil) != c.refused {
+			t.Errorf("logon %s, %s: err = %v, refused %v", c.logon, c.url, err, c.refused)
+		}
+		if !c.refused {
+			continue
+		}
+		// Do refuses too, and before dialling: the doer has no host to dial.
+		_, err = d.Do(req)
+		if err == nil || !strings.Contains(err.Error(), "logon language") {
+			t.Errorf("Do: err = %v, want the language refusal", err)
+		}
+		if d.client != nil {
+			t.Errorf("Do dialled for a refused request")
 		}
 	}
 }
