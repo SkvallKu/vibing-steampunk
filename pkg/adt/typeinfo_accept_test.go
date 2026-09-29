@@ -15,7 +15,9 @@ import (
 // meant it had never returned anything to anybody. These two tests pin the header
 // on BOTH callers, because the bug was a twin drifting out of step with its twin —
 // pinning only the one that broke would let the next divergence through.
-const dataElementsAcceptV2 = "application/vnd.sap.adt.dataelements.v2+xml"
+// Both versions, v2 first: 7.50 serves only v1 and answers a v2-only Accept
+// with 406 just the same (2026-09-29).
+const dataElementsAcceptV2 = dataElementAccept
 
 func TestGetTypeInfo_SendsVersionedAccept(t *testing.T) {
 	xmlResp := `<?xml version="1.0" encoding="utf-8"?><blue:wbobj adtcore:name="APC_CONNECTION_ID" adtcore:type="DTEL/DE" adtcore:description="Connection ID" xmlns:blue="http://www.sap.com/wbobj/dictionary/dtel" xmlns:adtcore="http://www.sap.com/adt/core"><dtel:dataElement xmlns:dtel="http://www.sap.com/adt/dictionary/dataelements"><dtel:typeKind>domain</dtel:typeKind></dtel:dataElement></blue:wbobj>`

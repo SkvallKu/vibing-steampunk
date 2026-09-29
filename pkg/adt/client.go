@@ -1599,7 +1599,7 @@ func (c *Client) GetTypeInfo(ctx context.Context, typeName string) (*TypeInfo, e
 		// to anybody. GetDataElementLabels in i18n.go hit the identical bug on
 		// the identical endpoint and was fixed there; this twin was missed, so
 		// the same 406 survived here. Keep the two in step.
-		Accept: "application/vnd.sap.adt.dataelements.v2+xml",
+		Accept: dataElementAccept, // v1 for 7.50, which refuses a v2-only Accept with 406 too
 	})
 	if err != nil {
 		return nil, fmt.Errorf("getting type info: %w", err)
