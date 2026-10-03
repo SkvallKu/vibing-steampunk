@@ -1,3 +1,5 @@
+> **Fork** of oisee/vibing-steampunk with RFC/SAProuter patches — see [FORK.md](FORK.md) · [Русский](FORK.ru.md)
+
 # Vibing Steampunk (vsp)
 
 **AI-Agentic Development Unlocked for ABAP** — any system with ADT enabled, 7.50 upwards.

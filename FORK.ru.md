@@ -1,0 +1,179 @@
+[English](FORK.md) | Русский
+
+> Перевод [FORK.md](FORK.md). При расхождении верна английская версия.
+
+# vibing-steampunk — форк с RFC/SAProuter
+
+Форк [oisee/vibing-steampunk](https://github.com/oisee/vibing-steampunk), с которым
+`vsp` работает с SAP-системами, доступными **только по classic RFC через SAProuter**:
+без ADT/HTTPS-порта, без SAP NW RFC SDK и без pyrfc. Кроме того, в нём есть
+исправления для старых релизов (7.40, 7.50), на которых чтение в апстриме падает.
+
+Ветка `patched` — это `main` апстрима плюс коммиты ниже; при каждой синхронизации
+она ребейзится (последняя — на v2.60.0). Теги `vX.Y.Z-patch.N` показывают, на каком релизе апстрима основана сборка.
+
+## Патчи
+
+| Коммит | Что делает |
+|---|---|
+| `feat(rfc): route classic RFC through a SAProuter` | `open-rfc-go` умеет `NI_ROUTE`, но `pkg/saprfc` не передавал маршрут в `rfc.Destination.Router`. Добавлены `--saprouter`, `rfc_saprouter` в `.vsp.json` и параметр `saprouter` у MCP-экшена `rfc`; маршрут, отличный от собственного маршрута сервера, отклоняется, как апстрим отклоняет host и sysnr в отдельном вызове. Хоп `/W/<пароль>` в `--verbose` скрывается. |
+| `fix(adt): tunnel the ordinary ADT client over RFC too` | С одним первым патчем маршрут использовала только явная `rfc`-поверхность; `pkg/adt.Client`, на котором построены `GetSource`, `GetClassInfo`, `SearchObject`, `Activate` и большинство инструментов, по-прежнему ходил по HTTP и падал по таймауту. Теперь при заданном `rfc_saprouter` ADT-клиент идёт через RFC-туннель (`SADT_REST_RFC_ENDPOINT`), CSRF на этом канале пропускается. Системы без роутера не затронуты. |
+| `feat(rfc): opt-in CpicStreaming` | Запись и проверка синтаксиса через туннель падали на телах больше ~28000 байт (`CPIC streaming is disabled…`). Ограничение — захардкоженный флаг клиента в `open-rfc-go`, а не SAP Basis. Добавлен `rfc_cpic_streaming` (по умолчанию выключен). Нужен [форк open-rfc-go](https://github.com/SkvallKu/open-rfc-go). |
+| `fix(rfc): pass rfc_cpic_streaming from .vsp.json to 'vsp rfc call'` | `vsp rfc call` брал из системы `.vsp.json` хост, логин и маршрут, но не `rfc_cpic_streaming`, поэтому с включённым флагом всё равно падал на телах больше 28000 байт. |
+| `fix(adt): resolve package from object metadata` | Если quickSearch не вернул пакет объекта, пакет берётся из метаданных самого объекта, а не считается отсутствующим. |
+| `feat(mcp): start the server for a .vsp.json system with -s` | Апстрим (v2.59, #249) берёт RFC-настройки из собственной записи сервера в `.vsp.json`, но URL, клиент и логин по-прежнему из `SAP_*` и `.env`, поэтому в одном проекте нельзя было держать серверы для нескольких систем или клиентов, не переназначая `SAP_*` для каждого. `vsp -s <имя>` теперь берёт всё подключение из этой системы, включая маршрут и `rfc_cpic_streaming`. Включается явно: без `-s` ничего не меняется. |
+| `fix(mcp): GetTextElements and SetTextElements over ADT, not the ZADT_VSP WebSocket` | Оба инструмента ходили через WebSocket ZADT_VSP, а он подключается к порту ICM напрямую и маршрут SAProuter не использует; RFC-туннель же передаёт только ADT-запросы вида «запрос — ответ». Поэтому на системах, доступных только по RFC, они падали по таймауту даже с установленным ZADT_VSP. Теперь они работают через ресурс текстовых элементов ADT, как `texts_get`/`texts_set` и `vsp texts`. |
+| `fix(mcp): SearchObject that finds nothing answers [], not null` | Пустой результат сериализовался как `null`. |
+| `fix(adt): GetInstalledComponents reads the Atom feed SAP answers with` | `/sap/bc/adt/system/components` отвечает Atom-лентой (7.40, 7.50), и инструмент всегда падал с `expected element type <components> but have <feed>`. Каждая запись разбирается на компонент, релиз, уровень SP, пакет поддержки (новое поле `package`) и описание. |
+| `fix(adt): vsp deploy writes a source that has warnings only` | Любое сообщение проверки синтаксиса считалось ошибкой, поэтому предупреждение («избыточное преобразование») останавливало deploy, а при создании оставляло пустой объект. Как в `WriteSource`, останавливают только сообщения с severity E, A и X; предупреждения возвращаются и выводятся. |
+| `fix(adt): wrapSQL breaks lines with CR LF` | Freestyle-запрос длиннее 255 символов переносится, но переносился через голый LF, а служба делит строки только по CR LF, и запрос падал с «больше 255 символов в строке 1» (7.50). Теперь перенос — CR LF, как и перевод строки, написанный вызывающим. |
+| `fix(saprfc): the RFC tunnel survives GENERATE_SUBPOOL_DIR_FULL` | Туннель держит одну ABAP-сессию, а каждый запрос data preview генерирует в ней временный subroutine pool; примерно после тридцати шести запросов любой запрос падал в дамп до перезапуска vsp. Теперь после ABAP-дампа соединение сбрасывается (и закрывается), а этот дамп (он случается до выполнения запроса) повторяется один раз на новом соединении. |
+| `fix(adt): read a class include whose name is exactly thirty characters` | У класса с именем ровно 30 символов нет заполнения `=` (`/IWFND/CL_SODATA_POST_PRO_XLSXCM001`), и такой include читался как программа. |
+| `fix(adt): function groups in a namespace` | Пул группы `/BEV1/EM0` — `/BEV1/SAPLEM0`, её include — `/BEV1/LEM0…`; префиксы ставились перед пространством имён, поэтому такие группы не распознавались, а вызываемые их модулей не находились. |
+| `fix(mcp): find a function module by its URI, whatever the logon language` | `GetCallersOf` и граф вызовов с `object_type=FUNC` сравнивали имя из поиска, а при русском логоне оно приходит как «BAL_MSG_DISPLAY_ABAP (Функциональный модуль)», и модуль считался отсутствующим. Имя берётся из URI. |
+| `fix(adt): GetObjectStructure answers for more than classes` | Любое имя читалось как класс, поэтому группа функций отвечала 400 «класс не существует», а форма — ошибкой ADT. Классы по-прежнему читаются через objectstructure; интерфейсы, программы, группы функций и формы (SFPF, SFPI) — из repository node structure, с группировкой по видам и URI каждого компонента. `object_type` необязателен: без него имя ищется в репозитории. Остальные типы отклоняются: для таблицы node structure перечисляет посторонние объекты. |
+| `fix(adt): a syntax check SAP did not run is not a clean source` | Для include без главной программы checkrun отвечает `notProcessed` без сообщений, и это читалось как «ошибок нет»: `SyntaxCheck`, `WriteSource INCL` и deploy называли непроверенный код чистым. Теперь такой ответ — предупреждение с текстом SAP (предупреждение, потому что у нового include главной программы ещё нет). |
+| `fix(cli): adt request says a lock does not outlive the call` | Каждый запуск `adt request` — своя ADT-сессия (по HTTP cookie живут в памяти, через RFC-туннель сессия — это соединение), поэтому хэндл блокировки из одного запуска недействителен в следующем, с `--stateful` или без. Об этом теперь сказано в справке со ссылкой на WriteSource, EditSource и deploy; после запроса LOCK в stderr выводится примечание. |
+| `fix(mcp): object descriptions say how long they may be` | SAP отказывает в создании, если описание длиннее, чем допускает краткий текст, а инструменты не говорили, какой это предел. Теперь параметр `description` у WriteSource, CreateObject, CreateAndActivateProgram и CreateClassWithTests называет лимит, который SAP отдаёт в `descriptionTextLimit`: PROG и INCL 70, CLAS и INTF 60, FUGR 40, функциональные модули 74. |
+| `fix(adt): a method include's number is base 36, not hexadecimal` | `DecodeMethodIncludes` читал суффикс CM у include класса (`CL_X=====CM00A`) как шестнадцатеричный. У CL_DEP_TREE есть CM00A…CM00Z, и TMDIR даёт для CM00Z метод 35, на 7.40 и 7.50: суффикс в base 36. |
+| `fix(adt): callers from the cross-reference tables name the caller's method` | Класс-вызывающий из WBCROSSGT сводился к классу, а в `component` лежала используемая часть цели, тогда как в where-used list там метод вызывающего. Теперь TMDIR читается пачками (`CLASSNAME IN` и `METHODINDX IN`, в пределах 5000 строк), `component` — метод или раздел вызывающего, как в SE84, а часть цели — в `target_component`. |
+| `fix(saprfc): the RFC tunnel keeps a namespace's %2F escaped` | Туннель передавал SADT_REST_RFC_ENDPOINT раскодированный путь: `/sap/bc/adt/oo/classes/%2fsdf%2fcl_x` превращался в `.../classes//sdf/cl_x`, и любой объект в namespace, стандартный или клиентский, через RFC давал 404. Теперь путь уходит в экранированном виде. |
+| `fix(saprfc): read-table says why it cannot, and no rows is []` | `rfc read-table` на строке шире 512 символов повторял вызов с `USE_ET_DATA_4_RETURN`, которого на 7.50 нет, а на колонке STRING или RAWSTRING заканчивался дампом SAP `ASSIGN ... CASTING`. Теперь оба случая говорят, что делать: меньше полей или data preview (`vsp query`, GetTableContents). Без строк печатается `[]`, а не `null`. |
+| `fix(cli): an error is printed once, and without the usage screen` | Команда, упавшая при выполнении, печатала ошибку, справку по использованию и ошибку ещё раз. Теперь только ошибку; на неверный флаг или аргумент справка по-прежнему выводится. |
+| `fix(saprfc): the RFC tunnel leaves sap-client and sap-language out of the URI` | На 7.40 через туннель discovery приходил пустым: его реализации BAdI выбираются по всему URI запроса, и `?sap-client=…&sap-language=…` не подходил ни под один фильтр. По RFC оба параметра и так берутся из соединения; туннель их больше не передаёт. |
+| `feat(adt): a DDIC structure can be created and written from its source` | Апстрим (v2.59, #272) создаёт структуры и append-структуры из исходника `define structure`. Изменить структуру было по-прежнему нельзя: `WriteSource TABL` отправляет исходник структуры в `/ddic/tables`, который структур не отдаёт (апстрим #253), а 7.50 пишет `define type`, который создание отвергало. WriteSource и GetSource принимают `STRUCT`; `WriteSource TABL` направляет по исходнику (`define structure`/`define type`/`extend type` — в `/ddic/structures`); создание принимает и `define type`; `TABL/DS` в CreateObject. |
+| `feat(adt): domains and data elements, with vsp doma\|dtel` | Апстрим (v2.60, #273) создаёт домены и элементы данных через `SAP(create, "DOMA …"/"DTEL …")` одним документом v2 — его 7.50 для элементов данных не принимает (там только v1). Прочитать целиком или изменить их было нельзя. `/ddic/domains` (7.57) и `/ddic/dataelements` (7.50 — v1, 7.57 — v2) отдают один XML-документ на объект: GetDomain и GetDataElement его читают; WriteDomain и WriteDataElement блокируют, читают под блокировкой, отправляют PUT всего документа в той версии, что отдала система, снимают блокировку и активируют; ответ — сообщения активации (`CreateDomainFrom`/`UpdateDomain`, `CreateDataElementFrom`/`UpdateDataElement`). CLI `vsp doma\|dtel get\|create\|set` (`--dry-run`). |
+| `feat(mcp): EditMessageClass; vsp doma --fix takes quoted texts` | EditMessageClass добавляет, меняет и удаляет сообщения класса на мастер-языке, как `vsp msag set`; `dry_run` показывает план, блокировку инструмент ставит и снимает сам. `vsp doma --fix '01="One"'` сохранял кавычки в тексте — теперь они снимаются. |
+| `fix(saprfc): the RFC tunnel refuses a request for another language than the logon's` | Через RFC каждый запрос идёт на языке, с которым соединение вошло в систему; `sap-language` туннель отбрасывает. Поэтому `texts get --lang DE` отдавал тексты языка входа, i18n сравнивал язык сам с собой, а запись на DE ушла бы в тексты языка входа. Теперь такой запрос отклоняется до дозвона с советом взять профиль системы на этом языке. Язык входа по RFC был первой буквой ISO-кода (`UK` становился финским `U`); теперь это ключ SAP из `adt.SAPLanguageKey`. |
+
+### Старые релизы (7.40, 7.50)
+
+Найдено на SAP_BASIS 740 SP06 и проверено на 750. Каждый коммит собирается и работает
+сам по себе, так что апстрим может принять любой из них отдельно.
+
+| Коммит | Что делает |
+|---|---|
+| `fix(adt): read classes right on 7.40, and GetClassInfo on every release` | На 7.40 object structure класса помечает метод как `CLAS/OO` (на 7.50+ — `CLAS/OM`), поэтому `GetSource … method=` и правка метода отвечали «method not found». `GetClassInfo` на любом релизе возвращал пустые методы и атрибуты, а у final-классов — `isFinal: false`; теперь он читает коды типов и атрибуты final/abstract из структуры, а суперкласс и интерфейсы — из исходника. |
+| `fix(adt): table queries on releases with the classic SQL parser` | До 7.40 SP08 нет freestyle SQL, а data preview разбирает классический Open SQL: падают `SELECT a, b` и `ORDER BY a, b`, а также длинный запрос с `IN ('A', 'B')`. В запросе расставляются пробелы после запятых и внутри скобок, а при ответе 400 — один повтор без запятых между колонками. `RunQuery` (а с ним `GetSystemInfo` и `vsp query`) при отсутствии freestyle выполняет SELECT по одной таблице через data preview. |
+| `feat(adt): GetTable and GetStructure answer from DD02L/DD03L` | Исходник DDIC-таблиц ADT отдаёт только с 7.52. При ответе 404 описание собирается из DD02L/DD02T/DD03L в форме DDL-исходника, а первая строка говорит, что оно сгенерировано. |
+| `fix(adt): a release without the text elements resource is an error, not an empty text pool` | На 7.50 нет `/sap/bc/adt/textelements`: любой документ отвечает 404 «No application class found», и чтение считало это пустым видом текстов, так что программа со ста текстами читалась как пустая. Теперь такой 404 отличается от отсутствующего вида и выдаётся как ошибка «ресурса нет». |
+| `fix(adt): a line break in a data preview query is white space on 7.40 too` | 7.40 SP06 не считает перевод строки пробелом: в `SELECT *\nFROM dd03l\nWHERE …` имя таблицы и `WHERE` читались как одно имя. Перевод строки и табуляция вне кавычек заменяются пробелом. |
+| `fix(adt): note a 100-row answer to a large data preview request` | Data preview на 7.40 SP06 на запрос больше порога (от 5000 до 9999 строк) отвечает своими 100 строками по умолчанию — без ошибки и без общего числа, поэтому `all_rows` возвращал 100 строк, которые выглядели полными. Теперь у такого результата есть заметка в `Notes`: данные могут быть неполными, запрашивайте не больше 5000. |
+| `fix(adt): report why a data preview failed, not the commas it retried without` | Если повтор без запятых тоже падал, возвращалась ошибка первой попытки — на 7.40 SP06 это всегда ошибка про запятые («В OO-контексте для типов C, P, X и N требуются эксплицитные указания длины»), за которой не было видно настоящей причины, например неизвестного поля. Теперь первой идёт ошибка повтора. |
+| `fix(adt): data preview on 7.40 puts a blank before a comma too` | Длинный запрос с `IN ( 'A', 'B' )` падал с «За "', '" должен следовать пробел» в зависимости от того, где оказались запятые и сколько цифр в `max_rows`. `CL_ADT_DP_OPEN_SQL_HANDLER` на 7.40 режет запрос от 255 символов на строки перед токенами и начинает последнюю строку на символ раньше; если этот токен — запятая, кавычка перед ней дублируется (на 7.50 эта строка закомментирована). С пробелом перед каждой запятой дублируется пробел. |
+| `feat(adt): who calls an object, from the cross-reference tables on 7.40` | На 7.40 SP06 нет where-used list (`usageReferences` отвечает 404), поэтому `GetCallersOf`, граф вызывающих и dump impact падали. При 404 они читают CROSS, WBCROSSGT и D010INC, а владельца и пакет — из TFDIR, TLIBG, TRDIR и TADIR; ответ называет источник и его оговорки и сообщает, какую таблицу прочитать не удалось или какая упёрлась в лимит строк. `GetCallersOf` принимает также `TABL`, `DTEL`, `TTYP`. |
+| `feat(adt): where-used falls back to the tables on its conversion 500 too` | На 7.50 where-used list отвечает 500 «Error while converting object references» для таблиц и функциональных модулей, которые SE84 показывает; только эта 500 тоже уходит к таблицам, а `source` говорит почему. |
+| `fix(adt): GetFunctionGroup names the group's includes, and its sources are read on 7.40/7.50` | `GetFunctionGroup` возвращает include группы (новое поле `Includes`) рядом с модулями. Objectstructure группы на 7.40 и 7.50 отвечает 404, поэтому `tr-boundaries`, анализ транспортов и аудит CR не читали ни одной группы функций; там список исходников теперь берётся из repository node structure. |
+| `fix(adt): message classes keep their language and short text; create, set, delete` | Апстрим (v2.59, #270) создаёт классы сообщений и передаёт с текстами `adtcore:language`. В PUT по-прежнему не было краткого текста, пакета и языка оригинала: 7.50 при каждой записи стирает краткий текст класса (T100T), 7.40 SP06 ничего не пишет, если `adtcore:masterLanguage` не совпадает с языком сеанса. Теперь класс сначала читается под блокировкой записи и отправляется обратно вокруг сообщений, со своим кратким текстом, пакетом и языком оригинала. Новое: удаление (`<mc:deletedmessages>`), `vsp msag get\|create\|set`. |
+| `fix(adt): data elements are asked for in v2 and v1` | GetTypeInfo и GetDataElementLabels просили только v2; 7.50 отдаёт элементы данных только в v1 и отвечал 406 на любое имя. Каждый релиз принимает только свои версии; «v2, v1» работает на обоих. |
+| `fix(adt): PackageExists reads TDEVC where the release has no packages resource` | На 7.40 и 7.50 нет `/sap/bc/adt/packages/{имя}`: роутер отвечает 404 на любое имя, `$TMP` тоже, и каждая установка через EnsurePackage пыталась создать существующий пакет. Теперь 404 без ADT exception document означает, что ресурса нет, и отвечает TDEVC через data preview; ошибка чтения — ошибка, а не «пакета нет». |
+| `fix(adt): GetTransaction reads TRANT, and what the transaction starts from TSTC` | GetTransaction спрашивал VIT о `TRAN` (500 «No URI-Mapping» на любом релизе) с Accept, который ресурс отвергает (406), и ждал программу, которую ADT не отдаёт вовсе. Теперь запрашивается `TRANT`; где VIT нет (7.40), шапка берётся из TSTCT и TADIR. Программа, экран и параметр — из TSTC и TSTCP; `Kind` (отчёт, диалог, параметрическая, вариантная, OO, меню области) ставится только там, где строки говорят это прямо. Несуществующая транзакция — ошибка, а не пустой ответ. |
+
+## Настройка
+
+Приоритет маршрута: `--saprouter` > `rfc_saprouter` в `.vsp.json` >
+`VSP_<SYS>_RFC_SAPROUTER` > `SAP_SAPROUTER`.
+
+```jsonc
+// .vsp.json
+{
+  "default": "prod",
+  "systems": {
+    "prod": {
+      "url": "https://unused.example:44300",
+      "user": "DEV", "client": "100",
+      "rfc_host": "10.0.0.1",                        // сервер приложений, как его видит роутер
+      "rfc_sysnr": "00",
+      "rfc_saprouter": "/H/router.example.com/S/3299",
+      "rfc_cpic_streaming": true                     // по желанию: тела > 28000 байт
+    }
+  }
+}
+```
+
+Пароль берётся из `VSP_<SYS>_RFC_PASSWORD` или `SAP_PASSWORD` — в файл его не пишите.
+
+Строка маршрута приводится к виду `/H/…/H/`, который ждёт `open-rfc-go`:
+`/H/router/S/3299` → `/H/router/S/3299/H/`; пустой маршрут — прямое соединение.
+
+**MCP, одна система:** задайте `SAP_SAPROUTER` (и `SAP_PASSWORD`) в `env` сервера в `.mcp.json`.
+RFC-туннель берёт `rfc_host`/`rfc_sysnr` из собственной записи сервера в `.vsp.json`
+рабочей папки: той, чьи URL и клиент совпадают с серверными (апстрим #249), или из записи
+`default` без URL.
+
+**MCP, несколько систем или мандантов:** запускайте каждый сервер с `-s <имя>`. Сервер
+берёт URL, мандант, язык, пользователя, `rfc_*` и маршрут из этой системы, пароль — из
+`VSP_<ИМЯ>_PASSWORD` (RFC: `rfc_user`, `VSP_<ИМЯ>_RFC_PASSWORD`, иначе тот же логин).
+`SAP_USER`, `SAP_PASSWORD`, `SAP_SAPROUTER` и система `default` для подключения не
+используются: обычно они относятся к другой системе, поэтому при нехватке настройки сервер
+не стартует, а не входит под ними.
+
+- Приоритет: флаги командной строки > система > переменные `SAP_*` и `.env`.
+- Настройки безопасности системы только сужают флаги: `read_only`, `block_free_sql`,
+  `transport_read_only` добавляются; `allowed_packages`/`allowed_transports` действуют,
+  если флага нет, а список во флаге должен укладываться в список системы.
+  `enable_transports` и `allow_transportable_edits` — только флагами.
+- Системы с SSO и cookie с `-s` пока не поддерживаются (задавайте флагами).
+
+```jsonc
+// .mcp.json — без секретов; пароли — VSP_DEV_PASSWORD / VSP_DATA_PASSWORD в .env
+{ "mcpServers": {
+  "vsp":      { "command": "vsp", "args": ["-s", "DEV", "--mode", "focused", "--allowed-packages", "$TMP"] },
+  "vsp-data": { "command": "vsp", "args": ["-s", "DATA", "--mode", "focused", "--read-only",
+                                           "--transport-read-only", "--disabled-groups", "RTDHXIGC"] }
+} }
+```
+
+```sh
+vsp -s prod rfc info --verbose
+vsp -s prod rfc adt GET /sap/bc/adt/core/discovery
+vsp -s prod source CLAS ZCL_SOMETHING
+```
+
+## Сборка
+
+Форк зависит от форка `open-rfc-go` через `replace` в `go.mod`, поэтому
+`go install …@latest` **не работает** (там Go игнорирует `replace`). Берите бинарник
+из релиза или собирайте из клона:
+
+```sh
+git clone -b patched https://github.com/SkvallKu/vibing-steampunk
+cd vibing-steampunk
+CGO_ENABLED=0 go build -o build/vsp ./cmd/vsp
+```
+
+Чтобы работать с обоими репо одновременно, склонируйте их рядом и создайте `go.work`
+в родительской папке (не коммитьте его):
+
+```sh
+go work init ./vibing-steampunk ./open-rfc-go
+```
+
+## Ограничения
+
+- ADT поверх RFC — stateless на каждый вызов; активация через туннель ограничена
+  самим SAP, а не патчем.
+- `vsp compat` по-прежнему опрашивает HTTP-порты напрямую и зависает на RFC-only системах.
+- На 7.40 data preview не сообщает длину колонки и никогда не помечает ключевые поля,
+  поэтому `GetTableContents` показывает там `Length: 0` и `IsKey: false`. Так отвечает
+  SAP; сами данные верные.
+- Текстовые элементы на 7.50 (проверено), а значит и на 7.40, не читаются и не пишутся: ресурса для них в ADT
+  там нет, и теперь vsp так и отвечает, а не «текстов нет». Путь через RFC
+  (`RPY_PROGRAM_READ`, `RPY_TEXTELEMENTS_INSERT`) пока не сделан.
+- `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (MCP-инструмент; `vsp rfc call`
+  работает) и отладчик AMDP по-прежнему требуют WebSocket ZADT_VSP, до которого через
+  SAProuter не достучаться.
+- Вызывающие, прочитанные из таблиц перекрёстных ссылок (7.40 и 500 на 7.50, см. выше), грубее SE84: объявление переменной типа считается использованием; вызов унаследованного метода записан на класс, где метод определён, так что у суперкласса оказываются пользователи подклассов (`CL_SALV_FORM_UIE_LABEL`: SE84 — 9, таблицы — 277); виден `SUBMIT`, которого SE84 не показывает; у вызывающего класса метод берётся из TMDIR, а что он использует у цели — в `target_component`; динамические вызовы не записываются. Для очень используемых объектов (MARA) ответ строится по первым 5000 строк и помечен `incomplete`.
+- `rfc read-table` (RFC_READ_TABLE) не читает колонки STRING и RAWSTRING, а на 7.50 ещё и
+  строку шире 512 символов; data preview (`vsp query`) читает и то и другое.
+
+## Синхронизация с апстримом
+
+```sh
+git fetch upstream
+git rebase upstream/main patched
+go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/graph/... ./pkg/config/... ./internal/mcp/...
+git tag vX.Y.Z-patch.N && git push --force-with-lease origin patched --tags
+```
+
+Патчи, принятые в апстрим, выпадают из `patched` при следующем ребейзе.
