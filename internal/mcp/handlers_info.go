@@ -59,17 +59,15 @@ func (s *Server) handleInfo(ctx context.Context) *mcp.CallToolResult {
 		fmt.Fprintf(&b, "  cache        %d hits, %d misses, %d entries (GET answers kept %s, dropped on any write)\n", cs.Hits, cs.Misses, cs.Entries, cs.TTL)
 	}
 
-	host, sysnr := saprfc.SysnrFromURL(s.config.BaseURL)
-	if host != "" {
-		fmt.Fprintf(&b, "  host         %s\n", host)
-	}
-	if sysnr != "" {
-		// Said to be derived. It is a convention about ICM ports, not something
-		// the system was asked, and a landscape that does not follow the
-		// convention would be misreported by a card that stated it as fact.
-		fmt.Fprintf(&b, "  instance     %s (derived from the port, not read from the system)\n", sysnr)
+	// Over the RFC tunnel the URL is only a name: every ADT call goes to the
+	// gateway through SAProuter, and the URL's host and port are not used, so
+	// an instance derived from that port would describe nothing.
+	if dest, ok := rfcTunnelDest(s.config); ok {
+		fmt.Fprintf(&b, "  route        ADT over RFC — gateway %s instance %s via SAProuter %s (the URL's host and port are not used)\n",
+			dest.Host, dest.Sysnr, strings.TrimSuffix(dest.Router, "/H/"))
 	} else {
-		fmt.Fprintf(&b, "  instance     unknown — the port does not follow the 80NN/443NN/5NN00 convention\n")
+		host, sysnr := saprfc.SysnrFromURL(s.config.BaseURL)
+		writeHTTPRoute(&b, host, sysnr)
 	}
 
 	// The system's own identity costs SQL, so it is asked for only when the
@@ -77,6 +75,9 @@ func (s *Server) handleInfo(ctx context.Context) *mcp.CallToolResult {
 	if alive {
 		if info, err := s.adtClient.GetSystemInfo(ctx); err == nil {
 			fmt.Fprintf(&b, "  system       %s client %s\n", info.SystemID, info.Client)
+			if h := strings.TrimSpace(info.HostName); h != "" {
+				fmt.Fprintf(&b, "  app server   %s (as the system names it)\n", h)
+			}
 			if rel := strings.TrimSpace(info.SAPRelease); rel != "" {
 				line := "  release      " + rel
 				if db := strings.TrimSpace(info.DatabaseSystem); db != "" {
@@ -126,6 +127,22 @@ diagnosis; these are what it usually means:
 
 `)
 	return mcp.NewToolResultText(b.String())
+}
+
+// writeHTTPRoute is the host and instance of a direct ADT/HTTP connection, as
+// far as the URL tells them.
+func writeHTTPRoute(b *strings.Builder, host, sysnr string) {
+	if host != "" {
+		fmt.Fprintf(b, "  host         %s\n", host)
+	}
+	if sysnr != "" {
+		// Said to be derived. It is a convention about ICM ports, not something
+		// the system was asked, and a landscape that does not follow the
+		// convention would be misreported by a card that stated it as fact.
+		fmt.Fprintf(b, "  instance     %s (derived from the port, not read from the system)\n", sysnr)
+	} else {
+		fmt.Fprintf(b, "  instance     unknown — the port does not follow the 80NN/443NN/5NN00 convention\n")
+	}
 }
 
 // adtReachable asks the cheapest question only an authenticated session can
