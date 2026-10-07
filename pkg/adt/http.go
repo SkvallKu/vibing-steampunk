@@ -1083,7 +1083,20 @@ func IsSessionExpiredError(err error) bool {
 
 // Ping sends a lightweight HEAD request to /sap/bc/adt/core/discovery to keep the session alive.
 // It refreshes the CSRF token as a side effect.
+//
+// A channel with no CSRF concept (see noCSRFDoer) never yields a token, and
+// writes there do not ask for one, so a missing token is no sign of a dead
+// session: SAP(info) called the RFC tunnel to 7.40 "NOT usable" while creates
+// and activations went through. There the discovery itself is asked for, past
+// the response cache, and any answer but an error is a live session.
 func (t *Transport) Ping(ctx context.Context) error {
+	if t.skipsCSRF() {
+		_, err := t.request(ctx, "/sap/bc/adt/core/discovery", &RequestOptions{
+			Method: http.MethodGet,
+			Accept: "application/atomsvc+xml",
+		})
+		return err
+	}
 	return t.fetchCSRFToken(ctx)
 }
 
