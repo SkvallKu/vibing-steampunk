@@ -218,10 +218,98 @@ func (c *Client) Activate(ctx context.Context, objectURL string, objectName stri
 	}
 
 	result, err := parseActivationResult(resp.Body)
-	if err != nil || !refusedWithoutReason(result) {
+	if err != nil {
 		return result, err
 	}
+	if askedToConfirm(result) {
+		return c.confirmInactiveList(ctx, []string{objectURL}, result)
+	}
+	if !refusedWithoutReason(result) {
+		return result, nil
+	}
 	return c.activateWithInactiveParts(ctx, objectURL, objectName, result)
+}
+
+// askedToConfirm is SAP's answer to a preaudit that found inactive objects
+// recorded in a transport together with the one asked for: a list of them
+// and not a word more. Eclipse shows it as "activate these together?" and
+// sends the ticked ones back. Nothing has been activated yet.
+func askedToConfirm(r *ActivationResult) bool {
+	return r != nil && !r.Success && len(r.Messages) == 0 && len(r.Inactive) > 0
+}
+
+// confirmInactiveList answers that list the way Eclipse does by default, but
+// only with the parts of the objects asked for (their URI, or one below it)
+// that are the caller's own or nobody's; a colleague's change or another
+// object is never activated along. Without a user name every part that names
+// a user is left out. The objects left out are named in the result. When
+// none of the list belongs to the objects, the list is the answer.
+func (c *Client) confirmInactiveList(ctx context.Context, objectURLs []string, listed *ActivationResult) (*ActivationResult, error) {
+	var take, leave []InactiveObject
+	for _, o := range listed.Inactive {
+		own := o.User == "" || (c.config.Username != "" && strings.EqualFold(o.User, c.config.Username))
+		if !o.Deleted && own && belongsToAny(o, objectURLs) {
+			take = append(take, o)
+		} else {
+			leave = append(leave, o)
+		}
+	}
+	if len(take) == 0 {
+		return listed, nil
+	}
+	var sb strings.Builder
+	sb.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+	sb.WriteString("<adtcore:objectReferences xmlns:adtcore=\"http://www.sap.com/adt/core\">\n")
+	for _, o := range take {
+		sb.WriteString(`  <adtcore:objectReference adtcore:uri="` + xmlAttr(o.URI) + `"`)
+		if o.Type != "" {
+			sb.WriteString(` adtcore:type="` + xmlAttr(o.Type) + `"`)
+		}
+		sb.WriteString(` adtcore:name="` + xmlAttr(o.Name) + `"`)
+		if o.ParentURI != "" {
+			sb.WriteString(` adtcore:parentUri="` + xmlAttr(o.ParentURI) + `"`)
+		}
+		sb.WriteString("/>\n")
+	}
+	sb.WriteString("</adtcore:objectReferences>")
+	resp, err := c.transport.Request(ctx, "/sap/bc/adt/activation?method=activate&preauditRequested=false", &RequestOptions{
+		Method:      http.MethodPost,
+		Body:        []byte(sb.String()),
+		ContentType: "application/xml",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("activation failed: %w", err)
+	}
+	result, err := parseActivationResult(resp.Body)
+	if err != nil {
+		return result, err
+	}
+	if len(leave) > 0 {
+		names := make([]string, 0, len(leave))
+		for _, o := range leave {
+			names = append(names, strings.TrimSpace(o.Name))
+		}
+		result.Messages = append(result.Messages, ActivationResultMessage{
+			Type:      "W",
+			ShortText: "Not activated along (another object, another user's or a deletion): " + strings.Join(names, ", "),
+		})
+	}
+	return result, nil
+}
+
+// belongsToAny says whether o is one of the objects or a part of one: its
+// URI, or its parent's, is the object's or below it.
+func belongsToAny(o InactiveObject, objectURLs []string) bool {
+	for _, u := range objectURLs {
+		base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(u, "/source/main"), "/"))
+		for _, cand := range []string{o.URI, o.ParentURI} {
+			cand = strings.ToLower(cand)
+			if cand != "" && (cand == base || strings.HasPrefix(cand, base+"/")) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // refusedWithoutReason is a refusal with nothing in it: no message, no
@@ -367,7 +455,9 @@ func parseActivationResult(data []byte) (*ActivationResult, error) {
 	}
 	type inactiveEntry struct {
 		Object *struct {
-			Ref inactiveRef `xml:"ref"`
+			User    string      `xml:"user,attr"`
+			Deleted string      `xml:"deleted,attr"`
+			Ref     inactiveRef `xml:"ref"`
 		} `xml:"object"`
 	}
 	type inactiveObjects struct {
@@ -422,13 +512,17 @@ func parseActivationResult(data []byte) (*ActivationResult, error) {
 	}
 
 	for _, entry := range entries {
-		if entry.Object != nil {
+		// An entry with an empty <ioc:object/> carries only the transport
+		// request the objects below are recorded in.
+		if entry.Object != nil && (entry.Object.Ref.URI != "" || entry.Object.Ref.Name != "") {
 			result.Success = false
 			result.Inactive = append(result.Inactive, InactiveObject{
 				URI:       entry.Object.Ref.URI,
 				Type:      entry.Object.Ref.Type,
 				Name:      entry.Object.Ref.Name,
 				ParentURI: entry.Object.Ref.ParentURI,
+				User:      entry.Object.User,
+				Deleted:   strings.EqualFold(entry.Object.Deleted, "true"),
 			})
 		}
 	}
@@ -575,7 +669,15 @@ func (c *Client) ActivateMultiple(ctx context.Context, objects []ObjectRef) (*Ac
 	if err != nil {
 		return nil, fmt.Errorf("batch activation failed: %w", err)
 	}
-	return parseActivationResult(resp.Body)
+	result, err := parseActivationResult(resp.Body)
+	if err != nil || !askedToConfirm(result) {
+		return result, err
+	}
+	urls := make([]string, 0, len(objects))
+	for _, obj := range objects {
+		urls = append(urls, obj.URI)
+	}
+	return c.confirmInactiveList(ctx, urls, result)
 }
 
 // ActivatePackageResult represents the result of batch activation.
