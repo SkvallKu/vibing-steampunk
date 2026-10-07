@@ -95,6 +95,12 @@ var zclVspAdtDtelResource string
 //go:embed zcl_vsp_adt_dtel_feature.clas.abap
 var zclVspAdtDtelFeature string
 
+//go:embed zcl_vsp_adt_ttyp_resource.clas.abap
+var zclVspAdtTtypResource string
+
+//go:embed zcl_vsp_adt_ttyp_feature.clas.abap
+var zclVspAdtTtypFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -135,6 +141,8 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_DOMA_FEATURE", zclVspAdtDomaFeature, "vsp ADT fallback: domains feature"},
 		{"CLAS", "ZCL_VSP_ADT_DTEL_RESOURCE", zclVspAdtDtelResource, "vsp ADT fallback: data elements"},
 		{"CLAS", "ZCL_VSP_ADT_DTEL_FEATURE", zclVspAdtDtelFeature, "vsp ADT fallback: data elements feature"},
+		{"CLAS", "ZCL_VSP_ADT_TTYP_RESOURCE", zclVspAdtTtypResource, "vsp ADT fallback: table types"},
+		{"CLAS", "ZCL_VSP_ADT_TTYP_FEATURE", zclVspAdtTtypFeature, "vsp ADT fallback: table types feature"},
 	}
 }
 

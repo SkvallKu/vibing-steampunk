@@ -37,6 +37,7 @@ standard resource (after an upgrade) vsp uses that again. Covered now:
   /sap/bc/adt/ddic/structures (structures as source, 7.40) — GetStructure, WriteSource STRUCT
   /sap/bc/adt/ddic/domains    (7.40, 7.50) — vsp doma, GetDomain, WriteDomain
   /sap/bc/adt/ddic/dataelements (7.40) — vsp dtel, GetDataElement, WriteDataElement
+  /sap/bc/adt/ddic/tabletypes (7.40, 7.50) — vsp ttyp, GetTableType, WriteTableType
 The table and structure source is 7.50's own where the release has it,
 and vsp's (the same language, checked against 7.50's) where it does not.
 
