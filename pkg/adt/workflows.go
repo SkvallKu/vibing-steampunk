@@ -212,7 +212,10 @@ type WriteClassResult struct {
 	ObjectURL     string              `json:"objectUrl"`
 	SyntaxErrors  []SyntaxCheckResult `json:"syntaxErrors,omitempty"`
 	Activation    *ActivationResult   `json:"activation,omitempty"`
-	Message       string              `json:"message,omitempty"`
+	// ComponentTexts is filled by the MCP tool, not by WriteClass: see
+	// SyncComponentTexts.
+	ComponentTexts *ComponentTextsResult `json:"componentTexts,omitempty"`
+	Message        string                `json:"message,omitempty"`
 }
 
 // WriteClass performs Lock -> SyntaxCheck -> UpdateSource -> Unlock -> Activate workflow for classes.

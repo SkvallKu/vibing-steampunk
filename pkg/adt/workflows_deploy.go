@@ -30,7 +30,21 @@ type DeployResult struct {
 	ExpectedSourceHash string   `json:"expectedSourceHash,omitempty"`
 	TargetSourceHash   string   `json:"targetSourceHash,omitempty"`
 	VerifiedSourceHash string   `json:"verifiedSourceHash,omitempty"`
-	Message            string   `json:"message,omitempty"`
+	// ComponentTexts reports the ABAP Doc short texts vsp wrote itself, on
+	// a release that does not take them from the source.
+	ComponentTexts *ComponentTextsResult `json:"componentTexts,omitempty"`
+	Message        string                `json:"message,omitempty"`
+}
+
+// addDeployComponentTexts is addComponentTexts for a deploy from a file.
+func (c *Client) addDeployComponentTexts(ctx context.Context, result *DeployResult, info *ABAPFileInfo, source, transport string) {
+	if result == nil || info == nil {
+		return
+	}
+	if result.Transport != "" {
+		transport = result.Transport
+	}
+	result.ComponentTexts = c.SyncComponentTexts(ctx, string(info.ObjectType), info.ObjectName, source, transport)
 }
 
 // splitSyntaxResults sorts syntax check messages the way WriteSource does:
@@ -83,6 +97,12 @@ func (c *Client) CreateFromFile(ctx context.Context, filePath, packageName, tran
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
 	source := string(sourceBytes)
+	written := false
+	defer func() {
+		if written {
+			c.addDeployComponentTexts(ctx, result, info, source, transport)
+		}
+	}()
 
 	// 3. Create object
 	var chosen TransportChoice
@@ -190,6 +210,7 @@ func (c *Client) CreateFromFile(ctx context.Context, filePath, packageName, tran
 		return nil, err
 	}
 	err = c.UpdateSource(ctx, sourceURL, source, lockResult.LockHandle, transport)
+	written = err == nil
 	if err != nil {
 		return &DeployResult{
 			FilePath:   filePath,
@@ -304,6 +325,12 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
 	source := string(sourceBytes)
+	written := false
+	defer func() {
+		if written && !isClassInclude {
+			c.addDeployComponentTexts(ctx, result, info, source, transport)
+		}
+	}()
 
 	// 3. Build object URL (for class includes, this is the parent class URL).
 	// The parent goes with it: DeployFromFile delegates here whenever the object
@@ -443,6 +470,7 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 			return nil, err
 		}
 		err = c.UpdateSource(ctx, sourceURL, source, lockResult.LockHandle, transport)
+		written = err == nil
 		if err != nil {
 			return &DeployResult{
 				FilePath:   filePath,

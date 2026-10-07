@@ -38,6 +38,9 @@ standard resource (after an upgrade) vsp uses that again. Covered now:
   /sap/bc/adt/ddic/domains    (7.40, 7.50) — vsp doma, GetDomain, WriteDomain
   /sap/bc/adt/ddic/dataelements (7.40) — vsp dtel, GetDataElement, WriteDataElement
   /sap/bc/adt/ddic/tabletypes (7.40, 7.50) — vsp ttyp, GetTableType, WriteTableType
+  /oo/componenttexts          (7.40, no standard resource) — the ABAP Doc short
+                              texts of a class or interface source: WriteSource,
+                              WriteClass and DeployFromFile write them there
 The table and structure source is 7.50's own where the release has it,
 and vsp's (the same language, checked against 7.50's) where it does not.
 
