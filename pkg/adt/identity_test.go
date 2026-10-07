@@ -245,3 +245,40 @@ func TestPinFallsBackWhereSystemInformationIsMissing(t *testing.T) {
 		t.Fatalf("want an unconfirmed-SID refusal, got %v", err)
 	}
 }
+
+// channelDoer is plain HTTP that also knows the system by a route of its own,
+// as the RFC tunnel does through RFC_SYSTEM_INFO.
+type channelDoer struct{ sid string }
+
+func (d channelDoer) Do(req *http.Request) (*http.Response, error) { return http.DefaultClient.Do(req) }
+
+func (d channelDoer) ChannelSystem(context.Context) (*ChannelSystem, error) {
+	return &ChannelSystem{SID: d.sid, Host: "apphost", Database: "ORACLE", Kernel: "742"}, nil
+}
+
+// A system copy keeps the source's logical system: a 7.40 DEV copied from PRD
+// answered T000 with PRDCLNT100. Where the channel knows the system itself,
+// that is what counts, for the pin and for the system info alike.
+func TestChannelSystemOutranksTheLogicalSystem(t *testing.T) {
+	f := newPinFake(t, "", "100", "TESTUSER")
+	f.noSysInfo, f.logsys = true, "PRDCLNT100"
+	client := func(opts ...Option) *Client {
+		cfg := NewConfig(f.URL, "TESTUSER", "secret", append([]Option{WithClient("100")}, opts...)...)
+		return NewClientWithTransport(cfg, NewTransportWithClient(cfg, channelDoer{sid: "DEV"}))
+	}
+
+	if _, err := client(WithExpect(mustPin(t, "DEV.100/TESTUSER"))).transport.Request(context.Background(), pinReadPath, nil); err != nil {
+		t.Fatalf("pin DEV over a channel that says DEV: %v", err)
+	}
+	if _, err := client(WithExpect(mustPin(t, "PRD.100"))).transport.Request(context.Background(), pinReadPath, nil); !IsIdentityMismatch(err) {
+		t.Fatalf("pin PRD over a channel that says DEV: want a refusal, got %v", err)
+	}
+
+	info, err := client().GetSystemInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.SystemID != "DEV" || info.HostName != "apphost" || info.DatabaseSystem != "ORACLE" || info.KernelRelease != "742" {
+		t.Errorf("system info from the channel: got %+v", info)
+	}
+}

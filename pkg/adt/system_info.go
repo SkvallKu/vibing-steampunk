@@ -110,6 +110,36 @@ type SystemInfo struct {
 	ABAPRelease     string `json:"abapRelease,omitempty"`
 }
 
+// ChannelSystem is what the channel under the client knows about the system
+// by a route of its own, not through ADT: over the RFC tunnel, RFC_SYSTEM_INFO
+// on the tunnel's connection. Plain HTTP has no such route.
+type ChannelSystem struct {
+	SID          string
+	Host         string
+	Database     string
+	DatabaseHost string
+	Kernel       string
+}
+
+// channelSystemDoer is an HTTPDoer that can say which system it reaches.
+type channelSystemDoer interface {
+	ChannelSystem(ctx context.Context) (*ChannelSystem, error)
+}
+
+// channelSystem is the channel's own word on the system, or nil when the
+// channel has none or could not get it.
+func (t *Transport) channelSystem(ctx context.Context) *ChannelSystem {
+	d, ok := t.httpClient.(channelSystemDoer)
+	if !ok {
+		return nil
+	}
+	s, err := d.ChannelSystem(ctx)
+	if err != nil || s == nil || s.SID == "" {
+		return nil
+	}
+	return s
+}
+
 // GetSystemInfo retrieves SAP system information.
 // Uses SQL queries to CVERS and T000 tables for reliable info across SAP versions.
 func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
@@ -167,6 +197,18 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 			"SELECT COMPONENT FROM CVERS WHERE COMPONENT = 'S4CORE'", 1)
 		if err == nil && len(s4Result.Rows) > 0 {
 			info.DatabaseSystem = "HDB"
+		}
+	}
+
+	// T000's logical system names the SID by convention only, and a system
+	// copy keeps the source's: a 7.40 DEV copied from PRD answered PRDCLNT100. Over the RFC
+	// tunnel the system says it itself.
+	if ch := c.transport.channelSystem(ctx); ch != nil {
+		info.SystemID = ch.SID
+		info.HostName = ch.Host
+		info.KernelRelease = ch.Kernel
+		if ch.Database != "" {
+			info.DatabaseSystem = ch.Database
 		}
 	}
 
