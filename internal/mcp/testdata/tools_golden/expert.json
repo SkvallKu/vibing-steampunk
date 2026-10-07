@@ -2976,6 +2976,31 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "Read a DDIC table type: row type (dictionary, predefined, reference or range), access, primary key (definition, uniqueness, components, alias), secondary keys, initial row count.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Table type name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "GetTableType"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetTableType-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "Get program text elements (selection texts, text symbols and heading texts) over ADT. Selection texts describe parameters (P_BUKRS='Company Code'), text symbols are TEXT-001 etc.",
       "inputSchema": {
         "properties": {
@@ -5141,5 +5166,50 @@
       "name": "WriteSource"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteSource-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Create or change a DDIC table type and activate it. properties is a JSON object with the fields of GetTableType to set: {\"typeKind\":\"dictionaryType\",\"typeName\":\"ZSTRUCT\"} or {\"typeKind\":\"predefinedAbapType\",\"dataType\":\"CHAR\",\"length\":10}, {\"accessType\":\"hashed\",\"keyDefinition\":\"keyComponents\",\"keyKind\":\"unique\",\"keyComponents\":[\"ID\"]}, \"secondaryKeys\":[{\"name\":\"BY_NAME\",\"access\":\"nonUniqueSorted\",\"definition\":\"keyComponents\",\"components\":[\"NAME\"]}]. typeKind is dictionaryType, predefinedAbapType, refToPredefinedAbapType, refToDictionaryType, refToClassOrInterfaceType, rangeTypeOnDataelement or rangeTypeOnPredefinedType (a range names its structure in rangeType; its key is fixed). accessType is standard, sorted, hashed, index or notSpecified; keyDefinition standard, rowType, keyComponents or notSpecified; keyKind unique, nonUnique or notSpecified. On change the fields not named keep their values; secondaryKeys and keyComponents, when named, replace the old ones. Left open on create: a standard table, standard key, non-unique.",
+      "inputSchema": {
+        "properties": {
+          "create": {
+            "description": "Create the table type (package and description required); otherwise it is changed",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "Short text (60)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Table type name",
+            "type": "string"
+          },
+          "package": {
+            "description": "Package, for create",
+            "type": "string"
+          },
+          "properties": {
+            "description": "JSON object with the table type fields to set",
+            "type": "string"
+          },
+          "transport": {
+            "description": "Transport request; chosen like the editor would when empty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "WriteTableType"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteTableType-fm"
   }
 ]

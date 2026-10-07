@@ -164,6 +164,7 @@ var fakeSearchKinds = []struct{ collection, typ string }{
 	{"functions/groups", "FUGR/F"},
 	{"ddic/dataelements", "DTEL/DE"},
 	{"ddic/domains", "DOMA/DD"},
+	{"ddic/tabletypes", "TTYP/DA"},
 	{"ddic/tables", "TABL/DT"},
 	{"ddic/ddl/sources", "DDLS/DF"},
 	{"messageclass", "MSAG/N"},
