@@ -231,7 +231,10 @@ type WriteSourceResult struct {
 	ExpectedSourceHash string              `json:"expectedSourceHash,omitempty"`
 	TargetSourceHash   string              `json:"targetSourceHash,omitempty"`
 	VerifiedSourceHash string              `json:"verifiedSourceHash,omitempty"`
-	Message            string              `json:"message,omitempty"`
+	// ComponentTexts reports the ABAP Doc short texts vsp wrote itself, on
+	// a release that does not take them from the source.
+	ComponentTexts *ComponentTextsResult `json:"componentTexts,omitempty"`
+	Message        string                `json:"message,omitempty"`
 }
 
 // WriteSourceResultError converts a logical WriteSource failure into an error
@@ -483,7 +486,9 @@ func (c *Client) WriteSource(ctx context.Context, objectType, name, source strin
 		}); err != nil {
 			return nil, err
 		}
-		return c.writeSourceCreate(ctx, objectType, name, source, opts)
+		created, err := c.writeSourceCreate(ctx, objectType, name, source, opts)
+		c.addComponentTexts(ctx, created, objectType, name, source, opts.Transport)
+		return created, err
 	} else {
 		// Existing objects are checked by their actual ADT URL, before any
 		// delegated workflow can acquire a lock. The marker then prevents the
@@ -503,11 +508,25 @@ func (c *Client) WriteSource(ctx context.Context, objectType, name, source strin
 			}
 		}
 		updated, err := c.writeSourceUpdate(ctx, objectType, name, source, opts)
+		c.addComponentTexts(ctx, updated, objectType, name, source, opts.Transport)
 		if err != nil || opts.ExpectedSourceHash == "" || !updated.Success {
 			return updated, err
 		}
 		return c.verifyWriteSourceResult(ctx, updated, source, opts)
 	}
+}
+
+// addComponentTexts writes the ABAP Doc short texts of a class or
+// interface source that was written, where the system does not take them
+// from the source itself (see SyncComponentTexts).
+func (c *Client) addComponentTexts(ctx context.Context, result *WriteSourceResult, objectType, name, source, transport string) {
+	if result == nil || (!result.Success && result.Activation == nil) {
+		return
+	}
+	if result.Transport != "" {
+		transport = result.Transport
+	}
+	result.ComponentTexts = c.SyncComponentTexts(ctx, objectType, name, source, transport)
 }
 
 // writeSourceUpdateObjectURL returns the repository URL for update branches

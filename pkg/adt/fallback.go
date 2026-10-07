@@ -92,6 +92,18 @@ func (c *Client) FallbackPathIfKnown(ctx context.Context, path string) string {
 	return c.FallbackPath(ctx, path)
 }
 
+// FallbackInstalled tells whether discovery shows the adt-fallback set
+// (its /info), whatever it covers. False also when discovery cannot be read.
+func (c *Client) FallbackInstalled(ctx context.Context) bool {
+	r := &c.fallback
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.loaded && !r.load(ctx, c) {
+		return false
+	}
+	return r.hrefs[FallbackRoot+"/info"]
+}
+
 func (r *fallbackRoutes) load(ctx context.Context, c *Client) bool {
 	res, err := c.transport.Request(ctx, "/sap/bc/adt/discovery", &RequestOptions{
 		Method: http.MethodGet,

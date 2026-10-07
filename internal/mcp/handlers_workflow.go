@@ -86,6 +86,12 @@ func (s *Server) handleWriteClass(ctx context.Context, request mcp.CallToolReque
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("WriteClass failed: %v", err)), nil
 	}
+	if result.Success || result.Activation != nil {
+		if result.Transport != "" {
+			transport = result.Transport
+		}
+		result.ComponentTexts = s.adtClient.SyncComponentTexts(ctx, "CLAS", className, source, transport)
+	}
 
 	output, _ := json.MarshalIndent(result, "", "  ")
 	return mcp.NewToolResultText(string(output)), nil
