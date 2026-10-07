@@ -37,7 +37,21 @@ func (s *Server) handleGetDataElement(ctx context.Context, request mcp.CallToolR
 	return mcp.NewToolResultText(string(out)), nil
 }
 
-// ddicWriteArgs are the arguments WriteDomain and WriteDataElement share.
+func (s *Server) handleGetTableType(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, _ := request.GetArguments()["name"].(string)
+	if strings.TrimSpace(name) == "" {
+		return newToolResultError("name is required"), nil
+	}
+	t, err := s.adtClient.GetTableType(ctx, name)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("GetTableType failed: %v", err)), nil
+	}
+	out, _ := json.MarshalIndent(t, "", "  ")
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+// ddicWriteArgs are the arguments WriteDomain, WriteDataElement and
+// WriteTableType share.
 type ddicWriteArgs struct {
 	name, pkg, description, transport string
 	create, hasDescription            bool
@@ -152,4 +166,33 @@ func (s *Server) handleWriteDataElement(ctx context.Context, request mcp.CallToo
 	}
 	w, err := s.adtClient.UpdateDataElement(ctx, a.name, a.transport, apply)
 	return ddicWriteResult(w, err, "WriteDataElement")
+}
+
+func (s *Server) handleWriteTableType(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	a, err := readDDICWriteArgs(request)
+	if err != nil {
+		return newToolResultError(err.Error()), nil
+	}
+	apply := func(t *adt.TableType) error {
+		if a.properties != nil {
+			if err := json.Unmarshal(a.properties, t); err != nil {
+				return fmt.Errorf("properties: %v", err)
+			}
+		}
+		if a.hasDescription {
+			t.Description = a.description
+		}
+		return nil
+	}
+	if a.create {
+		t := &adt.TableType{}
+		if err := apply(t); err != nil {
+			return newToolResultError(err.Error()), nil
+		}
+		t.Name, t.Package, t.Description = a.name, a.pkg, a.description
+		w, err := s.adtClient.CreateTableTypeFrom(ctx, t, a.transport)
+		return ddicWriteResult(w, err, "WriteTableType")
+	}
+	w, err := s.adtClient.UpdateTableType(ctx, a.name, a.transport, apply)
+	return ddicWriteResult(w, err, "WriteTableType")
 }

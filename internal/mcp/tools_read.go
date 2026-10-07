@@ -241,6 +241,13 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 		), s.handleGetDataElement)
 	}
 
+	if shouldRegister("GetTableType") {
+		s.mcpServer.AddTool(mcp.NewTool("GetTableType",
+			mcp.WithDescription("Read a DDIC table type: row type (dictionary, predefined, reference or range), access, primary key (definition, uniqueness, components, alias), secondary keys, initial row count."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Table type name")),
+		), s.handleGetTableType)
+	}
+
 	if shouldRegister("GetAPIReleaseState") {
 		s.mcpServer.AddTool(mcp.NewTool("GetAPIReleaseState",
 			mcp.WithDescription("Check API release state for S/4HANA Clean Core / ABAP Cloud compatibility. Returns whether an object is released for cloud development and key user apps. Use SearchObject first to get the object URI."),

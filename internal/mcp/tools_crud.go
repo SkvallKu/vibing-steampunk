@@ -88,6 +88,24 @@ func (s *Server) registerCRUDTools(shouldRegister func(string) bool) {
 		), s.handleWriteDataElement)
 	}
 
+	if shouldRegister("WriteTableType") {
+		s.mcpServer.AddTool(mcp.NewTool("WriteTableType",
+			mcp.WithDescription("Create or change a DDIC table type and activate it. properties is a JSON object with the fields of GetTableType to set: "+
+				`{"typeKind":"dictionaryType","typeName":"ZSTRUCT"} or {"typeKind":"predefinedAbapType","dataType":"CHAR","length":10}, `+
+				`{"accessType":"hashed","keyDefinition":"keyComponents","keyKind":"unique","keyComponents":["ID"]}, `+
+				`"secondaryKeys":[{"name":"BY_NAME","access":"nonUniqueSorted","definition":"keyComponents","components":["NAME"]}]. `+
+				"typeKind is dictionaryType, predefinedAbapType, refToPredefinedAbapType, refToDictionaryType, refToClassOrInterfaceType, rangeTypeOnDataelement or rangeTypeOnPredefinedType (a range names its structure in rangeType; its key is fixed). "+
+				"accessType is standard, sorted, hashed, index or notSpecified; keyDefinition standard, rowType, keyComponents or notSpecified; keyKind unique, nonUnique or notSpecified. "+
+				"On change the fields not named keep their values; secondaryKeys and keyComponents, when named, replace the old ones. Left open on create: a standard table, standard key, non-unique."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Table type name")),
+			mcp.WithBoolean("create", mcp.Description("Create the table type (package and description required); otherwise it is changed")),
+			mcp.WithString("package", mcp.Description("Package, for create")),
+			mcp.WithString("description", mcp.Description("Short text (60)")),
+			mcp.WithString("properties", mcp.Description("JSON object with the table type fields to set")),
+			mcp.WithString("transport", mcp.Description("Transport request; chosen like the editor would when empty")),
+		), s.handleWriteTableType)
+	}
+
 	if shouldRegister("EditMessageClass") {
 		s.mcpServer.AddTool(mcp.NewTool("EditMessageClass",
 			mcp.WithDescription("Add, change and delete messages of a message class (SE91) in its master language, which must be the logon language; "+

@@ -688,6 +688,8 @@ func (c *Client) buildObjectURLWithParent(objType CreatableObjectType, name, par
 		return domainURL(name), nil
 	case ObjectTypeDataElement:
 		return dataElementURL(name), nil
+	case ObjectTypeTableType:
+		return tableTypeURL(name), nil
 	default:
 		return "", fmt.Errorf("unsupported object type for URL building: %s", objType)
 	}
