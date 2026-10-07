@@ -163,12 +163,14 @@ func (c *Client) CreateStructure(ctx context.Context, opts StructureOptions) (*S
 	if opts.Transport != "" {
 		params.Set("corrNr", opts.Transport)
 	}
+	// Each release names the document its own way (7.57 structures.v2, 7.50
+	// blues.v1, and 415 for the other's); both take it as application/*, as
+	// CreateObject sends it.
 	if _, err = c.transport.Request(ctx, "/sap/bc/adt/ddic/structures", &RequestOptions{
 		Method:      http.MethodPost,
 		Query:       params,
 		Body:        []byte(body),
-		ContentType: "application/vnd.sap.adt.structures.v2+xml",
-		Accept:      "application/vnd.sap.adt.structures.v2+xml",
+		ContentType: "application/*",
 	}); err != nil {
 		return nil, fmt.Errorf("creating structure %s: %w", opts.Name, err)
 	}
