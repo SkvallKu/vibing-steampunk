@@ -465,16 +465,22 @@ func (t *Transport) systemInformation(ctx context.Context) (*Identity, error) {
 var logsysSIDRe = regexp.MustCompile(`^([A-Z][A-Z0-9]{2})CLNT[0-9]{3}$`)
 
 // probeIdentity asks the system who and where this session is: the system
-// information resource when the release has it, otherwise what SAP(info) and
-// vsp info already use — T000 for the client and its logical system (whose
-// name carries the SID), the transport organizer for the user of a cookie
-// session, and the configured user for a password logon SAP accepted.
+// information resource when the release has it, then the RFC tunnel's own
+// RFC_SYSTEM_INFO, otherwise what SAP(info) and vsp info already use — T000
+// for the client and its logical system (whose name carries the SID, unless a
+// system copy kept the source's), the transport organizer for the user of a
+// cookie session, and the configured user for a password logon SAP accepted.
 func (c *Client) probeIdentity(ctx context.Context) (*Identity, error) {
 	id, err := c.transport.systemInformation(ctx)
 	if err != nil && !errors.Is(err, errNoSystemInformation) {
 		return nil, err
 	}
 	pin := c.transport.identity.pin
+	if id == nil {
+		if ch := c.transport.channelSystem(ctx); ch != nil {
+			id = &Identity{SID: ch.SID, Source: "RFC_SYSTEM_INFO over the RFC tunnel"}
+		}
+	}
 	if id == nil {
 		id = &Identity{Source: "T000 and the transport organizer"}
 		// vsp's own fixed statement, not caller SQL: the free-SQL safety

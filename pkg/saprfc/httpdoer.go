@@ -35,6 +35,7 @@ type TunnelDoer struct {
 
 	mu     sync.Mutex
 	client *rfc.Client
+	system *adt.ChannelSystem
 }
 
 // NewTunnelDoer returns an HTTPDoer that tunnels every request through
@@ -64,6 +65,44 @@ func (d *TunnelDoer) conn(ctx context.Context) (*rfc.Client, error) {
 // every POST/PUT/DELETE, verified empirically for a read-shaped POST
 // (usageReferences) but not for an actual object mutation.
 func (d *TunnelDoer) NoCSRF() bool { return true }
+
+// ChannelSystem tells pkg/adt which system the tunnel reaches, from
+// RFC_SYSTEM_INFO on the tunnel's connection, asked once. Over ADT a release
+// without /sap/bc/adt/core/http/systeminformation has only T000's logical
+// system to go by, and that is the source system's after a system copy.
+func (d *TunnelDoer) ChannelSystem(ctx context.Context) (*adt.ChannelSystem, error) {
+	d.mu.Lock()
+	known := d.system
+	d.mu.Unlock()
+	if known != nil {
+		return known, nil
+	}
+	c, err := d.conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("RFC tunnel: %w", err)
+	}
+	r, err := c.Call(ctx, "RFC_SYSTEM_INFO", nil)
+	if err != nil {
+		return nil, fmt.Errorf("RFC_SYSTEM_INFO: %w", err)
+	}
+	m, _ := r.Get("RFCSI_EXPORT").(map[string]any)
+	// RFCHOST is eight characters: dev-app-server comes back as dev-app-.
+	host := str(m["RFCHOST2"])
+	if host == "" {
+		host = str(m["RFCHOST"])
+	}
+	s := &adt.ChannelSystem{
+		SID:          str(m["RFCSYSID"]),
+		Host:         host,
+		Database:     str(m["RFCDBSYS"]),
+		DatabaseHost: str(m["RFCDBHOST"]),
+		Kernel:       str(m["RFCKERNRL"]),
+	}
+	d.mu.Lock()
+	d.system = s
+	d.mu.Unlock()
+	return s, nil
+}
 
 func (d *TunnelDoer) drop(bad *rfc.Client) {
 	d.mu.Lock()
