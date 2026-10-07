@@ -4651,7 +4651,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e before a declaration, and \"! @parameter|@raising|@exception name | \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result).",
+      "description": "Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e before a declaration, and \"! @parameter|@raising|@exception name | \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph).",
       "inputSchema": {
         "properties": {
           "description": {

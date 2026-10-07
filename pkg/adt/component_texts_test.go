@@ -225,3 +225,114 @@ func TestComponentTextsNeedNothingWithoutABAPDoc(t *testing.T) {
 		t.Errorf("a program has no component texts, got %+v", got)
 	}
 }
+
+func TestParsePlainComponentTexts(t *testing.T) {
+	src := `"! The class
+CLASS zcl_demo_texts DEFINITION PUBLIC.
+  PUBLIC SECTION.
+    "! Counter
+    DATA mv_count TYPE i.
+    "! Adds two
+    "! numbers
+    "!
+    "! Longer documentation that is not the short text.
+    "! @parameter iv_a | First
+    "!   summand
+    "! @parameter iv_b |
+    "! @parameter rv_sum | <em>Sum</em> &amp; more
+    "! @raising cx_sy_arithmetic_overflow | Overflow
+    "! @see other
+    METHODS add IMPORTING iv_a TYPE i iv_b TYPE i RETURNING VALUE(rv_sum) TYPE i
+      RAISING cx_sy_arithmetic_overflow.
+    "! @parameter iv_x | Only the parameter
+    "! @exception failed | Failed
+    METHODS old IMPORTING iv_x TYPE i EXCEPTIONS failed.
+    "! <p class="shorttext synchronized">Tagged wins</p>
+    "! Plain line
+    "! @parameter iv_y | Plain parameter
+    METHODS mixed IMPORTING iv_y TYPE i.
+    TYPES:
+      "! Pair
+      BEGIN OF ty_pair,
+        "! Not a component
+        key TYPE string,
+      END OF ty_pair,
+      "! Pairs
+      ty_pairs TYPE STANDARD TABLE OF ty_pair WITH DEFAULT KEY.
+    "! Broken by a comment
+    " ordinary comment
+    METHODS broken.
+ENDCLASS.`
+	want := map[string]string{
+		"MV_COUNT":                      "Counter",
+		"ADD":                           "Adds two numbers",
+		"ADD.IV_A":                      "First summand",
+		"ADD.RV_SUM":                    "Sum & more",
+		"ADD.CX_SY_ARITHMETIC_OVERFLOW": "Overflow",
+		"OLD.IV_X":                      "Only the parameter",
+		"OLD.FAILED":                    "Failed",
+		"MIXED":                         "Tagged wins",
+		"MIXED.IV_Y":                    "Plain parameter",
+		"TY_PAIR":                       "Pair",
+		"TY_PAIRS":                      "Pairs",
+	}
+	if got := textMap(ParsePlainComponentTexts(src, "ZCL_DEMO_TEXTS")); !reflect.DeepEqual(got, want) {
+		t.Errorf("texts:\n got %v\nwant %v", got, want)
+	}
+	// Without plain only the tag counts.
+	if got := textMap(ParseComponentTexts(src, "ZCL_DEMO_TEXTS")); !reflect.DeepEqual(got, map[string]string{"MIXED": "Tagged wins"}) {
+		t.Errorf("tagged only: %v", got)
+	}
+}
+
+const plainTextsSource = `CLASS zcl_demo_texts DEFINITION PUBLIC.
+  PUBLIC SECTION.
+    "! Adds
+    "! @parameter iv_a | First
+    METHODS add IMPORTING iv_a TYPE i.
+ENDCLASS.`
+
+// Where the system does not write the texts, plain ABAP Doc is written.
+func TestPlainComponentTextsGoToTheStandIn(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, true, &calls, &put)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(context.Background(), "CLAS", "ZCL_DEMO_TEXTS", plainTextsSource, "")
+	if got == nil || got.Written != 2 || got.Error != "" || got.Note != "" {
+		t.Fatalf("result: %+v", got)
+	}
+	if want := "ADD\t\tAdds\nADD\tIV_A\tFirst\n"; put != want {
+		t.Errorf("PUT body %q, want %q", put, want)
+	}
+}
+
+// Where the system writes the texts itself, plain ABAP Doc is documentation
+// only: nothing goes to the stand-in.
+func TestPlainComponentTextsAreLeftAloneWhereTheSystemWritesTexts(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, false, &calls, &put)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "user", "pass")
+	if got := c.SyncComponentTexts(context.Background(), "CLAS", "ZCL_DEMO_TEXTS", plainTextsSource, ""); got != nil || len(calls) != 0 {
+		t.Errorf("got %+v, calls %v", got, calls)
+	}
+}
+
+// Tags still work on 7.40, with a note that its class check warns on them.
+func TestTaggedComponentTextsOn740CarryANote(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, true, &calls, &put)
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(context.Background(), "CLAS", "ZCL_DEMO_TEXTS", componentTextsSource, "")
+	if got == nil || got.Written != 2 || !strings.Contains(got.Note, "plain ABAP Doc") {
+		t.Fatalf("result: %+v", got)
+	}
+}

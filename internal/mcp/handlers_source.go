@@ -154,7 +154,7 @@ func (s *Server) registerGetSource() {
 // registerWriteSource registers the unified WriteSource tool
 func (s *Server) registerWriteSource() {
 	s.mcpServer.AddTool(mcp.NewTool("WriteSource",
-		mcp.WithDescription("Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! <p class=\"shorttext synchronized\">text</p> before a declaration, and \"! @parameter|@raising|@exception name | <p class=\"shorttext synchronized\">text</p>; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result)."),
+		mcp.WithDescription("Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! <p class=\"shorttext synchronized\">text</p> before a declaration, and \"! @parameter|@raising|@exception name | <p class=\"shorttext synchronized\">text</p>; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph)."),
 		mcp.WithString("object_type",
 			mcp.Required(),
 			mcp.Description("Object type: PROG (program), CLAS (class), INTF (interface), INCL (include), DDLS (CDS view), BDEF (behavior definition), SRVD (service definition)"),
