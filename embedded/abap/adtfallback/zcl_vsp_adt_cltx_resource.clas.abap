@@ -332,12 +332,17 @@ CLASS zcl_vsp_adt_cltx_resource IMPLEMENTATION.
     cifkey-clsname = name.
     manager = cl_adt_corr_insert_dark=>get_instance( ).
     manager->corrnr = corrnr.
+    " Without suppress_working_area_update the function also puts CLSD or
+    " INTF on the inactive worklist (DWINACTIV), as SE24 does before it
+    " activates. Nothing here is ever activated, so the entry would stay:
+    " the interface's users stop compiling, the class cannot be released.
     CALL FUNCTION 'SEO_CLIF_CORR_INSERT'
       EXPORTING
-        cifkey            = cifkey
-        limu              = limu
-        suppress_dialog   = seox_true
-        lifecycle_manager = manager
+        cifkey                       = cifkey
+        limu                         = limu
+        suppress_dialog              = seox_true
+        lifecycle_manager            = manager
+        suppress_working_area_update = seox_true
       CHANGING
         corrnr            = corrnr
         devclass          = devclass
