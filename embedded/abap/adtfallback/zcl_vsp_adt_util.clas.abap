@@ -1,7 +1,8 @@
 "! <p class="shorttext synchronized">vsp ADT fallback: shared helpers</p>
 "! What the resources of more than one feature need: an ADT lock handle
 "! made from the enqueue entries of an object, a plain body in the
-"! response, and the ADT exception for a failed standard call.
+"! response, a lock result, and the ADT exception for a failed standard
+"! call.
 CLASS zcl_vsp_adt_util DEFINITION
   PUBLIC
   FINAL
@@ -19,6 +20,16 @@ CLASS zcl_vsp_adt_util DEFINITION
       IMPORTING response     TYPE REF TO if_adt_rest_response
                 content_type TYPE string
                 body         TYPE string.
+
+    "! The answer to _action=LOCK: the lock result as asXML, the way the
+    "! standard LOCK gives it. Written here and not through
+    "! CL_ADT_REST_COMP_CNT_HANDLER, whose negotiation on 7.40 SP06 wants
+    "! the Accept parameters to equal the handler's type, which has none.
+    "! vsp asks with charset and dataname, so the lock was taken and the
+    "! answer to it was a 406 — the lock stayed in the session.
+    CLASS-METHODS respond_lock
+      IMPORTING response TYPE REF TO if_adt_rest_response
+                result   TYPE sadt_object_lock_result.
 
     "! Raises CX_ADT_RES_NO_ACCESS with the message in SY-MSG*, or with
     "! the text when there is none.
@@ -74,6 +85,18 @@ CLASS zcl_vsp_adt_util IMPLEMENTATION.
     entity = response->get_inner_rest_response( )->create_entity( ).
     entity->set_content_type( iv_media_type = content_type ).
     entity->set_string_data( body ).
+  ENDMETHOD.
+
+
+  METHOD respond_lock.
+    DATA xml TYPE xstring.
+    DATA entity TYPE REF TO if_rest_entity.
+
+    CALL TRANSFORMATION id SOURCE data = result RESULT XML xml.
+    entity = response->get_inner_rest_response( )->create_entity( ).
+    entity->set_content_type(
+      iv_media_type = 'application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result' ).
+    entity->set_binary_data( xml ).
   ENDMETHOD.
 
 

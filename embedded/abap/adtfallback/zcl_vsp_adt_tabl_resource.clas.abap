@@ -180,11 +180,12 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     ENDIF.
 
     parse_uri( request ).
-    read_header( ).
     CASE action.
       WHEN 'LOCK'.
+        read_header( ).
         lock( request = request response = response ).
       WHEN 'UNLOCK'.
+        " Also after a DELETE: the object is gone, the lock is not.
         unlock( ).
       WHEN OTHERS.
         RAISE EXCEPTION TYPE cx_adt_res_meth_not_supported.
@@ -547,11 +548,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
     result-is_local = cl_adt_cts_management=>is_transport_disabled_for_obj(
       object   = 'TABL'
       obj_name = CONV #( name ) ).
-    response->set_body_data(
-      content_handler = cl_adt_rest_comp_cnt_handler=>create(
-        request         = request
-        content_handler = cl_adt_rest_cnt_hdl_factory=>get_instance( )->get_handler_for_asxml( ) )
-      data            = result ).
+    zcl_vsp_adt_util=>respond_lock( response = response result = result ).
   ENDMETHOD.
 
 

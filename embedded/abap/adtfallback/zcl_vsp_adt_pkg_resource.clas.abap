@@ -131,11 +131,7 @@ CLASS zcl_vsp_adt_pkg_resource IMPLEMENTATION.
         lock_result-is_local = cl_adt_cts_management=>is_transport_disabled_for_obj(
           object   = 'DEVC'
           obj_name = CONV #( name ) ).
-        response->set_body_data(
-          content_handler = cl_adt_rest_comp_cnt_handler=>create(
-            request         = request
-            content_handler = cl_adt_rest_cnt_hdl_factory=>get_instance( )->get_handler_for_asxml( ) )
-          data            = lock_result ).
+        zcl_vsp_adt_util=>respond_lock( response = response result = lock_result ).
       WHEN 'UNLOCK'.
         package->set_changeable(
           EXPORTING  i_changeable      = abap_false

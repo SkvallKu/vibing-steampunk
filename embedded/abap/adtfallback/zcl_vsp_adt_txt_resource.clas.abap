@@ -86,11 +86,7 @@ CLASS zcl_vsp_adt_txt_resource IMPLEMENTATION.
     CASE action.
       WHEN 'LOCK'.
         lock_result = access->lock( ).
-        response->set_body_data(
-          content_handler = cl_adt_rest_comp_cnt_handler=>create(
-            request         = request
-            content_handler = cl_adt_rest_cnt_hdl_factory=>get_instance( )->get_handler_for_asxml( ) )
-          data            = lock_result ).
+        zcl_vsp_adt_util=>respond_lock( response = response result = lock_result ).
       WHEN 'UNLOCK'.
         access->unlock( ).
       WHEN OTHERS.
