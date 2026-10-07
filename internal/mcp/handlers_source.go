@@ -83,6 +83,10 @@ func (s *Server) routeSourceAction(ctx context.Context, action, objectType, obje
 				if v := getStringParam(params, "expected_source_hash"); v != "" {
 					args["expected_source_hash"] = v
 				}
+				// CLAS and INTF: texts written after the source.
+				if v, ok := params["component_texts"]; ok {
+					args["component_texts"] = v
+				}
 				// CLAS only: the include to write instead of the main source.
 				// Forwarded, never dropped, so WriteSource can route it or
 				// refuse it (#242).
@@ -154,7 +158,7 @@ func (s *Server) registerGetSource() {
 // registerWriteSource registers the unified WriteSource tool
 func (s *Server) registerWriteSource() {
 	s.mcpServer.AddTool(mcp.NewTool("WriteSource",
-		mcp.WithDescription("Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! <p class=\"shorttext synchronized\">text</p> before a declaration, and \"! @parameter|@raising|@exception name | <p class=\"shorttext synchronized\">text</p>; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph)."),
+		mcp.WithDescription("Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! <p class=\"shorttext synchronized\">text</p> before a declaration, and \"! @parameter|@raising|@exception name | <p class=\"shorttext synchronized\">text</p>; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph). 7.40's ABAP Doc check warns on Cyrillic too: give such texts as component_texts instead, outside the source."),
 		mcp.WithString("object_type",
 			mcp.Required(),
 			mcp.Description("Object type: PROG (program), CLAS (class), INTF (interface), INCL (include), DDLS (CDS view), BDEF (behavior definition), SRVD (service definition)"),
@@ -190,6 +194,9 @@ func (s *Server) registerWriteSource() {
 		),
 		mcp.WithString("include",
 			mcp.Description("For CLAS only: write this include of an existing class instead of the main source: definitions, implementations, macros, testclasses (created if missing). Any other name is refused."),
+		),
+		mcp.WithObject("component_texts",
+			mcp.Description(componentTextsDescription),
 		),
 		mcp.WithNumber("timeout",
 			mcp.Description(callTimeoutDescription),
@@ -353,6 +360,10 @@ func (s *Server) writeSource(ctx context.Context, request mcp.CallToolRequest) (
 	if mode != "" {
 		opts.Mode = adt.WriteSourceMode(mode)
 	}
+	ctx, errRes := withComponentTextsArg(ctx, request.GetArguments())
+	if errRes != nil {
+		return errRes, nil
+	}
 
 	result, err := s.adtClient.WriteSource(ctx, objectType, name, source, opts)
 	if err != nil {
@@ -443,6 +454,9 @@ func (s *Server) registerImportFromFile() {
 		),
 		mcp.WithString("expected_source_hash",
 			mcp.Description("Optional sourceHash returned by GetSource(include_hash=true). Refuse an existing-object import if SAP source has changed."),
+		),
+		mcp.WithObject("component_texts",
+			mcp.Description(componentTextsDescription),
 		),
 		mcp.WithNumber("timeout",
 			mcp.Description(callTimeoutDescription),
@@ -570,4 +584,44 @@ func (s *Server) handleGrepPackages(ctx context.Context, request mcp.CallToolReq
 
 	output, _ := json.MarshalIndent(result, "", "  ")
 	return mcp.NewToolResultText(string(output)), nil
+}
+
+// componentTextsDescription documents component_texts wherever a class or
+// interface source is written.
+const componentTextsDescription = `CLAS and INTF only: short texts of components, written after the source through adt-fallback (SE24 descriptions, max 60 characters), over those of the source's ABAP Doc: {"GET_LIMIT":"Get the limit","GET_LIMIT.IV_WERKS":"Plant","C_LIMIT":"Default limit"} - a method, attribute, constant, type or event, or COMPONENT.PARAMETER for a parameter or exception. An empty text deletes one; texts not named stay. Keeps texts out of the source, where 7.40's ABAP Doc check warns on Cyrillic. Result: componentTexts.`
+
+// withComponentTextsArg puts the component_texts argument, an object or the
+// same as a JSON string, on ctx for SyncComponentTexts.
+func withComponentTextsArg(ctx context.Context, args map[string]any) (context.Context, *mcp.CallToolResult) {
+	raw, ok := args["component_texts"]
+	if !ok || raw == nil {
+		return ctx, nil
+	}
+	if str, isString := raw.(string); isString {
+		if strings.TrimSpace(str) == "" {
+			return ctx, nil
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(str), &decoded); err != nil {
+			return ctx, newToolResultError("component_texts: want an object {\"METHOD\":\"text\",\"METHOD.PARAMETER\":\"text\"}")
+		}
+		raw = decoded
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return ctx, newToolResultError("component_texts: want an object {\"METHOD\":\"text\",\"METHOD.PARAMETER\":\"text\"}")
+	}
+	m := make(map[string]string, len(obj))
+	for k, v := range obj {
+		text, isString := v.(string)
+		if !isString {
+			return ctx, newToolResultError(fmt.Sprintf("component_texts[%s]: text is not a string", k))
+		}
+		m[k] = text
+	}
+	texts, err := adt.ComponentTextsFromMap(m)
+	if err != nil {
+		return ctx, newToolResultError(err.Error())
+	}
+	return adt.WithComponentTexts(ctx, texts), nil
 }

@@ -39,6 +39,11 @@ import (
 // The text of a component is the first paragraph of its ABAP Doc, that of a
 // parameter or exception the first paragraph after the bar. A shorttext tag
 // still wins over the plain text of the same section.
+//
+// 7.40's ABAP Doc check also warns on Cyrillic, plain or tagged
+// (SABAP_DOC 112, "character must be escaped"). Texts that should not be in
+// the source at all are given to the write instead (WithComponentTexts) and
+// go to the stand-in, over those of the source.
 
 // componentTextsPath is the stand-in's collection. No release has a
 // standard one: the set offers it in discovery only where saving the source
@@ -67,6 +72,8 @@ func (t ComponentText) key() string {
 // source written to a release that does not take them itself.
 type ComponentTextsResult struct {
 	Written int `json:"written"`
+	// Deleted counts the given texts that were empty: those are removed.
+	Deleted int `json:"deleted,omitempty"`
 	// Skipped names texts that were not sent, and why.
 	Skipped []string `json:"skipped,omitempty"`
 	// Error is set when the texts were not written; the source was.
@@ -367,6 +374,51 @@ func shortText(section string) (string, bool) {
 	return strings.TrimSpace(text), true
 }
 
+type componentTextsKey struct{}
+
+// WithComponentTexts gives the texts of the class or interface written
+// under ctx: SyncComponentTexts writes them after the source, where the
+// adt-fallback set has the stand-in, whether or not the system takes the
+// source's ABAP Doc itself. A given text wins over the source's for the
+// same key; an empty one deletes the text.
+func WithComponentTexts(ctx context.Context, texts []ComponentText) context.Context {
+	if len(texts) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, componentTextsKey{}, texts)
+}
+
+func givenComponentTexts(ctx context.Context) []ComponentText {
+	texts, _ := ctx.Value(componentTextsKey{}).([]ComponentText)
+	return texts
+}
+
+// ComponentTextsFromMap reads {"ADD": "Adds", "ADD.IV_A": "First summand"}:
+// a component, or a parameter or exception of it after the dot.
+func ComponentTextsFromMap(m map[string]string) ([]ComponentText, error) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	texts := make([]ComponentText, 0, len(m))
+	seen := map[string]string{}
+	for _, k := range keys {
+		component, sub, _ := strings.Cut(strings.ToUpper(strings.TrimSpace(k)), ".")
+		t := ComponentText{Component: strings.TrimSpace(component), Subcomponent: strings.TrimSpace(sub),
+			Text: strings.TrimSpace(whitespaceRe.ReplaceAllString(m[k], " "))}
+		if t.Component == "" || strings.Contains(k, ".") && t.Subcomponent == "" || strings.Contains(t.Subcomponent, ".") {
+			return nil, fmt.Errorf("component texts: key %q is not COMPONENT or COMPONENT.PARAMETER", k)
+		}
+		if other, dup := seen[t.key()]; dup {
+			return nil, fmt.Errorf("component texts: %q and %q are the same key", other, k)
+		}
+		seen[t.key()] = k
+		texts = append(texts, t)
+	}
+	return texts, nil
+}
+
 func componentTextsURL(name string) string {
 	return componentTextsPath + "/" + url.PathEscape(strings.ToUpper(name))
 }
@@ -450,17 +502,29 @@ func (c *Client) SetComponentTexts(ctx context.Context, name string, texts []Com
 // when there was nothing to do. WriteSource and DeployFromFile call it
 // themselves; WriteClass, which WriteSource builds on, does not.
 func (c *Client) SyncComponentTexts(ctx context.Context, objectType, name, source, transport string) *ComponentTextsResult {
+	given := givenComponentTexts(ctx)
 	objectType, _, _ = strings.Cut(strings.ToUpper(objectType), "/") // CLAS/OC
 	if objectType != "CLAS" && objectType != "INTF" {
+		if len(given) > 0 {
+			return &ComponentTextsResult{Error: fmt.Sprintf("component texts not written: %s has none, only classes and interfaces do", objectType)}
+		}
 		return nil
 	}
 	tagged := ParseComponentTexts(source, name)
 	texts := ParsePlainComponentTexts(source, name)
-	if len(texts) == 0 {
+	if len(texts) == 0 && len(given) == 0 {
 		return nil
 	}
 	offered := c.componentTextsOffered(ctx)
-	if !offered && !componentTextsForced() {
+	if !offered && !componentTextsForced() && len(given) > 0 {
+		// The system writes the source's texts itself; only the given go.
+		if !c.fallbackHasFeature(ctx, "/oo/componenttexts") {
+			return &ComponentTextsResult{Error: fmt.Sprintf(
+				"%d given component texts not written: they go through the adt-fallback set "+
+					"(0.8.0 or later: vsp install adt-fallback), which is not installed", len(given))}
+		}
+		texts = nil
+	} else if !offered && !componentTextsForced() {
 		texts = tagged
 		if len(texts) == 0 {
 			return nil
@@ -479,14 +543,28 @@ func (c *Client) SyncComponentTexts(ctx context.Context, objectType, name, sourc
 		return nil
 	}
 	result := &ComponentTextsResult{}
+	var notes []string
 	if offered && len(tagged) > 0 {
-		result.Note = "this release's class check warns on every <p class=\"shorttext synchronized\"> line: " +
-			"write plain ABAP Doc instead (\"! Text, \"! @parameter name | Text), which is read the same way here"
+		notes = append(notes, "this release's class check warns on every <p class=\"shorttext synchronized\"> line: "+
+			"give the texts as component_texts, or write plain ABAP Doc (\"! Text, \"! @parameter name | Text), "+
+			"which is read the same way here")
 	}
+	if offered && !allASCII(texts) {
+		notes = append(notes, "this release's ABAP Doc check warns on Cyrillic, and likely on any letter outside ASCII "+
+			"(\"character must be escaped\"): give such texts as component_texts instead of ABAP Doc")
+	}
+	result.Note = strings.Join(notes, "; ")
 	send := texts[:0:0]
 	seen := map[string]bool{}
+	givenKeys := map[string]bool{}
+	for _, t := range given {
+		givenKeys[t.key()] = true
+	}
 	for _, t := range texts {
 		switch {
+		case givenKeys[t.key()]:
+			// The given text wins.
+			continue
 		case len([]rune(t.Text)) > componentTextMax:
 			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: longer than %d characters", t.key(), componentTextMax))
 		case t.Text == "":
@@ -498,6 +576,18 @@ func (c *Client) SyncComponentTexts(ctx context.Context, objectType, name, sourc
 			send = append(send, t)
 		}
 	}
+	deleted := 0
+	for _, t := range given {
+		switch {
+		case len([]rune(t.Text)) > componentTextMax:
+			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: longer than %d characters", t.key(), componentTextMax))
+		default:
+			if t.Text == "" {
+				deleted++
+			}
+			send = append(send, t)
+		}
+	}
 	sort.Strings(result.Skipped)
 	if len(send) == 0 {
 		return result
@@ -506,8 +596,20 @@ func (c *Client) SyncComponentTexts(ctx context.Context, objectType, name, sourc
 		result.Error = err.Error()
 		return result
 	}
-	result.Written = len(send)
+	result.Written = len(send) - deleted
+	result.Deleted = deleted
 	return result
+}
+
+func allASCII(texts []ComponentText) bool {
+	for _, t := range texts {
+		for _, r := range t.Text {
+			if r > 127 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // fallbackHasFeature tells whether the installed adt-fallback set has a
