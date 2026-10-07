@@ -1,7 +1,7 @@
 "! <p class="shorttext synchronized">vsp ADT fallback: DDIC object resource</p>
-"! What the form-based dictionary objects share — domains and data
-"! elements, whose ADT resource is one XML document per object, not a
-"! source:
+"! What the form-based dictionary objects share — domains, data elements
+"! and table types, whose ADT resource is one XML document per object, not
+"! a source:
 "! <ul>
 "! <li>POST {collection}?corrNr=..: creates the object from a document
 "!     that names it, its description and package, as the standard's
@@ -45,7 +45,7 @@ CLASS zcl_vsp_adt_dd_resource DEFINITION
   PROTECTED SECTION.
     DATA name TYPE ddobjname.
 
-    "! DOMA or DTEL.
+    "! DOMA, DTEL or TTYP.
     METHODS object_type ABSTRACT
       RETURNING VALUE(result) TYPE trobjtype.
 
@@ -279,6 +279,8 @@ CLASS zcl_vsp_adt_dd_resource IMPLEMENTATION.
         objtype = 'D'.
       WHEN 'DTEL'.
         objtype = 'E'.
+      WHEN 'TTYP'.
+        objtype = 'A'.
     ENDCASE.
     " RS_DD_DELETE_OBJ takes the lock itself and would find ours in its way
     " ("already being edited"): the handle has been checked, hand it over.
