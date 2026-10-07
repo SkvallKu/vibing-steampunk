@@ -1369,6 +1369,11 @@
       "description": "✅ RECOMMENDED - Smart deploy from file: auto-detects if object exists and creates/updates accordingly. Solves token limit problem for large generated files (ML models, 3948+ lines). Example: DeployFromFile(file_path=\"/path/to/zcl_ml_iris.clas.abap\", package_name=\"$ZAML_IRIS\") deploys any size file. Workflow: Parse → Check existence → Create or Update → Lock → SyntaxCheck → Write → Unlock → Activate. Supports .clas.abap (and its .clas.testclasses/.locals_def/.locals_imp/.macros.abap includes), .prog.abap, .incl.abap, .intf.abap, .fugr.abap, function modules as {group}.fugr.{module}.abap (abapGit) or {group}.fugr.{module}.func.abap, and the RAP suffixes. A typed file deploys to the object in its file name (# for /), never the one in its content; a file whose main statement names another object is refused. A .prog.abap whose sibling .prog.xml says SUBC I is that include. A plain {name}.abap is typed from its first statement only when that statement names {name}; otherwise it is refused (or read as an include when no REPORT/CLASS/INTERFACE/FUNCTION statement opens it). Use this for all file-based deployments. ABAP Doc short texts of classes and interfaces are written as WriteSource describes.",
       "inputSchema": {
         "properties": {
+          "component_texts": {
+            "description": "CLAS and INTF only: short texts of components, written after the source through adt-fallback (SE24 descriptions, max 60 characters), over those of the source's ABAP Doc: {\"GET_LIMIT\":\"Get the limit\",\"GET_LIMIT.IV_WERKS\":\"Plant\",\"C_LIMIT\":\"Default limit\"} - a method, attribute, constant, type or event, or COMPONENT.PARAMETER for a parameter or exception. An empty text deletes one; texts not named stay. Keeps texts out of the source, where 7.40's ABAP Doc check warns on Cyrillic. Result: componentTexts.",
+            "properties": {},
+            "type": "object"
+          },
           "expected_source_hash": {
             "description": "Optional sourceHash returned by GetSource(include_hash=true). Refuse an existing-object deployment if SAP source has changed.",
             "type": "string"
@@ -3568,6 +3573,11 @@
       "description": "Import ABAP object from local file into SAP system. Auto-detects object type from file extension, creates or updates, activates. Supports: programs, includes, classes (with includes), interfaces, function groups/modules, CDS views (DDLS), behavior definitions (BDEF), service definitions (SRVD). For class includes (.clas.testclasses.abap, .clas.locals_def.abap, etc.), the parent class must exist.",
       "inputSchema": {
         "properties": {
+          "component_texts": {
+            "description": "CLAS and INTF only: short texts of components, written after the source through adt-fallback (SE24 descriptions, max 60 characters), over those of the source's ABAP Doc: {\"GET_LIMIT\":\"Get the limit\",\"GET_LIMIT.IV_WERKS\":\"Plant\",\"C_LIMIT\":\"Default limit\"} - a method, attribute, constant, type or event, or COMPONENT.PARAMETER for a parameter or exception. An empty text deletes one; texts not named stay. Keeps texts out of the source, where 7.40's ABAP Doc check warns on Cyrillic. Result: componentTexts.",
+            "properties": {},
+            "type": "object"
+          },
           "expected_source_hash": {
             "description": "Optional sourceHash returned by GetSource(include_hash=true). Refuse an existing-object import if SAP source has changed.",
             "type": "string"
@@ -4881,6 +4891,11 @@
             "description": "Name of the ABAP class",
             "type": "string"
           },
+          "component_texts": {
+            "description": "CLAS and INTF only: short texts of components, written after the source through adt-fallback (SE24 descriptions, max 60 characters), over those of the source's ABAP Doc: {\"GET_LIMIT\":\"Get the limit\",\"GET_LIMIT.IV_WERKS\":\"Plant\",\"C_LIMIT\":\"Default limit\"} - a method, attribute, constant, type or event, or COMPONENT.PARAMETER for a parameter or exception. An empty text deletes one; texts not named stay. Keeps texts out of the source, where 7.40's ABAP Doc check warns on Cyrillic. Result: componentTexts.",
+            "properties": {},
+            "type": "object"
+          },
           "source": {
             "description": "ABAP class source code (definition and implementation)",
             "type": "string"
@@ -5092,9 +5107,14 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e before a declaration, and \"! @parameter|@raising|@exception name | \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph).",
+      "description": "Unified tool for writing ABAP source code with automatic create/update detection. Supports PROG, CLAS, INTF, INCL, and RAP types (DDLS, BDEF, SRVD). Component short texts of CLAS and INTF come from ABAP Doc: \"! \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e before a declaration, and \"! @parameter|@raising|@exception name | \u003cp class=\"shorttext synchronized\"\u003etext\u003c/p\u003e; max 60 characters. 7.50+ stores them on save; on 7.40 vsp writes them through adt-fallback (componentTexts in the result), and there plain ABAP Doc is what to write, as 7.40's class check warns on the tag: \"! text, \"! @parameter name | text (the first paragraph). 7.40's ABAP Doc check warns on Cyrillic too: give such texts as component_texts instead, outside the source.",
       "inputSchema": {
         "properties": {
+          "component_texts": {
+            "description": "CLAS and INTF only: short texts of components, written after the source through adt-fallback (SE24 descriptions, max 60 characters), over those of the source's ABAP Doc: {\"GET_LIMIT\":\"Get the limit\",\"GET_LIMIT.IV_WERKS\":\"Plant\",\"C_LIMIT\":\"Default limit\"} - a method, attribute, constant, type or event, or COMPONENT.PARAMETER for a parameter or exception. An empty text deletes one; texts not named stay. Keeps texts out of the source, where 7.40's ABAP Doc check warns on Cyrillic. Result: componentTexts.",
+            "properties": {},
+            "type": "object"
+          },
           "description": {
             "description": "Object description (required for create mode). SAP limits its length: PROG and INCL 70 characters, CLAS and INTF 60",
             "type": "string"

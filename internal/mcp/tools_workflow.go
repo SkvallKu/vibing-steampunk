@@ -39,6 +39,9 @@ func (s *Server) registerWorkflowTools(shouldRegister func(string) bool) {
 			mcp.WithString("transport",
 				mcp.Description("Transport request number (optional for local packages)"),
 			),
+			mcp.WithObject("component_texts",
+				mcp.Description(componentTextsDescription),
+			),
 		), s.handleWriteClass)
 	}
 

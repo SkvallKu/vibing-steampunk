@@ -82,6 +82,11 @@ func (s *Server) handleWriteClass(ctx context.Context, request mcp.CallToolReque
 		transport = t
 	}
 
+	ctx, errRes := withComponentTextsArg(ctx, request.GetArguments())
+	if errRes != nil {
+		return errRes, nil
+	}
+
 	result, err := s.adtClient.WriteClass(ctx, className, source, transport)
 	if err != nil {
 		return newToolResultError(fmt.Sprintf("WriteClass failed: %v", err)), nil

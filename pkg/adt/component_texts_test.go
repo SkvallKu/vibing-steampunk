@@ -336,3 +336,113 @@ func TestTaggedComponentTextsOn740CarryANote(t *testing.T) {
 		t.Fatalf("result: %+v", got)
 	}
 }
+
+func TestComponentTextsFromMap(t *testing.T) {
+	got, err := ComponentTextsFromMap(map[string]string{
+		"get_limit":          "  Получить\n лимит ",
+		"GET_LIMIT.iv_werks": "Завод",
+		"C_LIMIT":            "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ComponentText{
+		{Component: "C_LIMIT"},
+		{Component: "GET_LIMIT", Subcomponent: "IV_WERKS", Text: "Завод"},
+		{Component: "GET_LIMIT", Text: "Получить лимит"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	for _, bad := range []map[string]string{
+		{"": "x"}, {"A.": "x"}, {".B": "x"}, {"A.B.C": "x"}, {"a": "x", "A": "y"},
+	} {
+		if _, err := ComponentTextsFromMap(bad); err == nil {
+			t.Errorf("%v: no error", bad)
+		}
+	}
+}
+
+// Given texts go with the source's on 7.40 and win over them for the same
+// key; an empty one deletes the text.
+func TestGivenComponentTextsWinOverTheSource(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, true, &calls, &put)
+	defer srv.Close()
+
+	ctx := WithComponentTexts(context.Background(), []ComponentText{
+		{Component: "ADD", Text: "Сложить"},
+		{Component: "ADD", Subcomponent: "IV_B"},
+	})
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(ctx, "CLAS", "ZCL_DEMO_TEXTS", plainTextsSource, "")
+	if got == nil || got.Written != 2 || got.Deleted != 1 || got.Error != "" {
+		t.Fatalf("result: %+v", got)
+	}
+	if want := "ADD\tIV_A\tFirst\nADD\t\tСложить\nADD\tIV_B\t\n"; put != want {
+		t.Errorf("PUT body %q, want %q", put, want)
+	}
+}
+
+// Where the system takes ABAP Doc itself, given texts still go through the
+// set, and only they.
+func TestGivenComponentTextsGoWhereTheSystemWritesTexts(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, false, &calls, &put)
+	defer srv.Close()
+
+	ctx := WithComponentTexts(context.Background(), []ComponentText{{Component: "ADD", Subcomponent: "IV_A", Text: "Первое"}})
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(ctx, "INTF/OI", "ZCL_DEMO_TEXTS", componentTextsSource, "")
+	if got == nil || got.Written != 1 || got.Error != "" {
+		t.Fatalf("result: %+v", got)
+	}
+	if want := "ADD\tIV_A\tПервое\n"; put != want {
+		t.Errorf("PUT body %q, want %q", put, want)
+	}
+}
+
+func TestGivenComponentTextsNeedTheSet(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if strings.HasPrefix(r.URL.Path, "/sap/bc/adt/zvsp/") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`<app:service/>`))
+	}))
+	defer srv.Close()
+
+	ctx := WithComponentTexts(context.Background(), []ComponentText{{Component: "ADD", Text: "Adds"}})
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(ctx, "CLAS", "ZCL_DEMO_TEXTS", "CLASS zcl_demo_texts DEFINITION. ENDCLASS.", "")
+	if got == nil || !strings.Contains(got.Error, "adt-fallback") || got.Written != 0 {
+		t.Fatalf("result: %+v", got)
+	}
+}
+
+func TestGivenComponentTextsOnlyForClassesAndInterfaces(t *testing.T) {
+	ctx := WithComponentTexts(context.Background(), []ComponentText{{Component: "ADD", Text: "Adds"}})
+	c := NewClient("http://unused.invalid", "user", "pass")
+	got := c.SyncComponentTexts(ctx, "PROG", "ZDEMO", "REPORT zdemo.", "")
+	if got == nil || !strings.Contains(got.Error, "only classes and interfaces") {
+		t.Fatalf("result: %+v", got)
+	}
+}
+
+// 7.40's ABAP Doc check warns on Cyrillic: plain texts in it get a note.
+func TestCyrillicABAPDocOn740CarriesANote(t *testing.T) {
+	var calls []string
+	var put string
+	srv := componentTextsServer(t, true, &calls, &put)
+	defer srv.Close()
+
+	source := strings.ReplaceAll(plainTextsSource, "Adds", "Сложить")
+	c := NewClient(srv.URL, "user", "pass")
+	got := c.SyncComponentTexts(context.Background(), "CLAS", "ZCL_DEMO_TEXTS", source, "")
+	if got == nil || got.Written != 2 || !strings.Contains(got.Note, "component_texts") {
+		t.Fatalf("result: %+v", got)
+	}
+}

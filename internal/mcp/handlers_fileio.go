@@ -54,6 +54,10 @@ func (s *Server) deployFromFile(ctx context.Context, request mcp.CallToolRequest
 		transport = t
 	}
 	expectedSourceHash, _ := request.GetArguments()["expected_source_hash"].(string)
+	ctx, errRes := withComponentTextsArg(ctx, request.GetArguments())
+	if errRes != nil {
+		return errRes, nil
+	}
 	result, err := s.adtClient.DeployFromFileWithOptions(ctx, filePath, packageName, transport, &adt.DeployFromFileOptions{
 		ExpectedSourceHash: expectedSourceHash,
 	})

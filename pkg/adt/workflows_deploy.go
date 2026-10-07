@@ -327,8 +327,12 @@ func (c *Client) UpdateFromFileWithOptions(ctx context.Context, filePath, transp
 	source := string(sourceBytes)
 	written := false
 	defer func() {
-		if written && !isClassInclude {
+		switch {
+		case written && !isClassInclude:
 			c.addDeployComponentTexts(ctx, result, info, source, transport)
+		case written && len(givenComponentTexts(ctx)) > 0 && result != nil:
+			result.ComponentTexts = &ComponentTextsResult{Error: "component texts not written: " +
+				"they go with the class's main source (.clas.abap), not with an include"}
 		}
 	}()
 
