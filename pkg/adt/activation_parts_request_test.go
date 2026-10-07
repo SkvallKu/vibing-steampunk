@@ -11,7 +11,7 @@ import (
 
 // activateCall is one request the activation flow sent.
 type activateCall struct {
-	method, path, body string
+	method, path, query, body string
 }
 
 // activateHTTP stands in for SAP below the transport: every activation POST is
@@ -32,7 +32,7 @@ func (m *activateHTTP) Do(req *http.Request) (*http.Response, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, activateCall{req.Method, req.URL.Path, body})
+	m.calls = append(m.calls, activateCall{req.Method, req.URL.Path, req.URL.RawQuery, body})
 
 	status, answer := http.StatusOK, ""
 	switch {
