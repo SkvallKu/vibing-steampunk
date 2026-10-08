@@ -106,6 +106,19 @@ func (s *Server) registerCRUDTools(shouldRegister func(string) bool) {
 		), s.handleWriteTableType)
 	}
 
+	if shouldRegister("WriteProgramCUA") {
+		s.mcpServer.AddTool(mcp.NewTool("WriteProgramCUA",
+			mcp.WithDescription("Replace the GUI statuses and titles of a program (SE41, its CUA) and activate them; the program must exist. The document is abapGit's CUA node: a whole .prog.xml (only its CUA is used), the document of GetProgramCUA, or a bare <CUA> element. "+
+				"Read the current one with GetProgramCUA and send it back changed, whole. Keys link through codes: ADM.PFKCODE = STA.PFKCODE = PFK.CODE (a key set code like 000001, not a key number; PFK.PFNO is the F-key, 03/12/15), "+
+				"ADM.ACTCODE = STA.ACTCODE for the menu bar, STA.BUTCODE for the toolbar; a function is active in a status only with a SET row (STATUS, FUNCTION); TIT rows are titles (SET TITLEBAR). "+
+				"Links that do not hold come back as warnings: SAP writes them silently and the status then shows no keys. Needs the adt-fallback set 0.9.0+."),
+			mcp.WithString("program", mcp.Required(), mcp.Description("Program name (executable or module pool)")),
+			mcp.WithString("cua", mcp.Description("The CUA document (XML); or file_path")),
+			mcp.WithString("file_path", mcp.Description("Path of a file with the document, e.g. an abapGit .prog.xml")),
+			mcp.WithString("transport", mcp.Description("Transport request; chosen like the editor would when empty")),
+		), s.handleWriteProgramCUA)
+	}
+
 	if shouldRegister("EditMessageClass") {
 		s.mcpServer.AddTool(mcp.NewTool("EditMessageClass",
 			mcp.WithDescription("Add, change and delete messages of a message class (SE91) in its master language, which must be the logon language; "+

@@ -2428,6 +2428,35 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "Read the GUI statuses and titles of a program (SE41, its CUA) in abapGit's format: the CUA node of a .prog.xml as asXML (ADM; STA, FUN, MEN, MTX, ACT, BUT, PFK, SET, DOC, TIT, BIV with RSMPE_* rows). Read one before writing one: WriteProgramCUA replaces the whole CUA. Needs the adt-fallback set 0.9.0+.",
+      "inputSchema": {
+        "properties": {
+          "program": {
+            "description": "Program name (executable or module pool)",
+            "type": "string"
+          },
+          "version": {
+            "description": "active or inactive; the newest you may see when empty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "program"
+        ],
+        "type": "object"
+      },
+      "name": "GetProgramCUA"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetProgramCUA-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "Get source code of a specific version of an ABAP object. Use version_uri from GetRevisions output.",
       "inputSchema": {
         "properties": {
@@ -4645,6 +4674,43 @@
       "name": "WriteProgram"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteProgram-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Replace the GUI statuses and titles of a program (SE41, its CUA) and activate them; the program must exist. The document is abapGit's CUA node: a whole .prog.xml (only its CUA is used), the document of GetProgramCUA, or a bare \u003cCUA\u003e element. Read the current one with GetProgramCUA and send it back changed, whole. Keys link through codes: ADM.PFKCODE = STA.PFKCODE = PFK.CODE (a key set code like 000001, not a key number; PFK.PFNO is the F-key, 03/12/15), ADM.ACTCODE = STA.ACTCODE for the menu bar, STA.BUTCODE for the toolbar; a function is active in a status only with a SET row (STATUS, FUNCTION); TIT rows are titles (SET TITLEBAR). Links that do not hold come back as warnings: SAP writes them silently and the status then shows no keys. Needs the adt-fallback set 0.9.0+.",
+      "inputSchema": {
+        "properties": {
+          "cua": {
+            "description": "The CUA document (XML); or file_path",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Path of a file with the document, e.g. an abapGit .prog.xml",
+            "type": "string"
+          },
+          "program": {
+            "description": "Program name (executable or module pool)",
+            "type": "string"
+          },
+          "transport": {
+            "description": "Transport request; chosen like the editor would when empty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "program"
+        ],
+        "type": "object"
+      },
+      "name": "WriteProgramCUA"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteProgramCUA-fm"
   },
   {
     "tool": {
