@@ -67,6 +67,43 @@ on its own, so upstream can take any of them separately.
 | `fix(adt): PackageExists reads TDEVC where the release has no packages resource` | 7.40 and 7.50 have no `/sap/bc/adt/packages/{name}`: the router answers 404 for every name, `$TMP` included, and every install through EnsurePackage tried to create an existing package. A 404 without an ADT exception document now means the resource is missing, and TDEVC through data preview answers; a failed read is an error, not "absent". |
 | `fix(adt): GetTransaction reads TRANT, and what the transaction starts from TSTC` | GetTransaction asked VIT for `TRAN` (500 "No URI-Mapping" on every release) with an Accept the resource refuses (406), and expected a program ADT never gives. It now asks for `TRANT`; where the release has no VIT (7.40) the header comes from TSTCT and TADIR. Program, screen and parameter come from TSTC and TSTCP; `Kind` (report, dialog, parameter, variant, oo, area menu) is set only where the rows say it plainly. An unknown transaction is an error, not an empty answer. |
 
+## ADT fallback points (branch `adt-fallback`)
+
+7.40 and 7.50 lack ADT resources that vsp needs for everyday work: text elements,
+packages, DDIC objects, and some that no release has at all. The branch
+`adt-fallback` is `patched` plus a small ABAP set that stands in for them under
+`/sap/bc/adt/zvsp`, in the standard resource's own protocol where there is one.
+vsp finds the stand-ins in the discovery document and goes to the standard
+resource again once the system has it (after an upgrade). Release tags from
+`v2.60.0-patch.1` on are built from this branch.
+
+```sh
+vsp -s DEV install adt-fallback --dry-run   # what would change
+vsp -s DEV install adt-fallback             # install or update (0.9.0)
+vsp -s DEV uninstall adt-fallback           # remove everything again
+```
+
+The set goes into the local package `$VSP_ADT_FALLBACK_POINTS` (classes
+`ZCL_VSP_ADT_*`, `ZIF_VSP_ADT_FEATURE`) plus two BAdI implementations
+(`ZVSP_ADT_FALLBACK_APP`, `ZVSP_ADT_FALLBACK_URI_MAP`), created by a temporary
+report through `RFC_ABAP_INSTALL_AND_RUN`; nothing is transported. Without that
+authorization `--print-report` gives the report to run in SE38.
+`GET /sap/bc/adt/zvsp/info` names the version and the features.
+
+| Stand-in | Releases | vsp |
+|---|---|---|
+| `/textelements` (programs, classes) | 7.40, 7.50 | `vsp texts`, `GetTextElements`, `SetTextElements` |
+| `/packages` (read, create, delete) | 7.40, 7.50 | `CreatePackage`, `GetPackage` |
+| `/ddic/tables`, `/ddic/structures` (as source) | 7.40, 7.50 | `GetTable`, `GetStructure`, `WriteSource TABL\|STRUCT` |
+| `/ddic/domains`, `/ddic/dataelements` | 7.40 (DTEL), 7.40–7.50 (DOMA) | `vsp doma\|dtel`, `GetDomain`, `WriteDomain`, `GetDataElement`, `WriteDataElement` |
+| `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |
+| `/oo/componenttexts` (no standard resource) | 7.40 (and any, by request) | method, attribute and parameter short texts of classes and interfaces: from ABAP Doc, or given as `component_texts` to `WriteSource`, `WriteClass`, `DeployFromFile` |
+| `/cua/programs` (no standard resource) | any | GUI statuses and titles of a program in abapGit's format: `vsp cua get\|set`, `GetProgramCUA`, `WriteProgramCUA` |
+
+Each write locks, records the object in the transport request, writes the
+inactive version and activates it through the standard `/sap/bc/adt/activation`,
+as the editor does.
+
 ## Configuration
 
 Route precedence: `--saprouter` > `rfc_saprouter` in `.vsp.json` >
@@ -156,8 +193,7 @@ go work init ./vibing-steampunk ./open-rfc-go
   so `GetTableContents` shows `Length: 0` and `IsKey: false` there. That is what SAP
   sends; the data is right.
 - Text elements cannot be read or written on 7.50 (checked), and so not on 7.40 either: ADT has no resource for
-  them there, and vsp now says so instead of answering "no texts". A path over RFC
-  (`RPY_PROGRAM_READ`, `RPY_TEXTELEMENTS_INSERT`) is not written yet.
+  them there, and vsp now says so instead of answering "no texts". The adt-fallback set (above) stands in.
 - `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (the MCP tool; `vsp rfc call`
   works) and the AMDP debugger still need the ZADT_VSP WebSocket, which cannot be
   reached through a SAProuter.

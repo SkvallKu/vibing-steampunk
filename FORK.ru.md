@@ -69,6 +69,42 @@
 | `fix(adt): PackageExists reads TDEVC where the release has no packages resource` | На 7.40 и 7.50 нет `/sap/bc/adt/packages/{имя}`: роутер отвечает 404 на любое имя, `$TMP` тоже, и каждая установка через EnsurePackage пыталась создать существующий пакет. Теперь 404 без ADT exception document означает, что ресурса нет, и отвечает TDEVC через data preview; ошибка чтения — ошибка, а не «пакета нет». |
 | `fix(adt): GetTransaction reads TRANT, and what the transaction starts from TSTC` | GetTransaction спрашивал VIT о `TRAN` (500 «No URI-Mapping» на любом релизе) с Accept, который ресурс отвергает (406), и ждал программу, которую ADT не отдаёт вовсе. Теперь запрашивается `TRANT`; где VIT нет (7.40), шапка берётся из TSTCT и TADIR. Программа, экран и параметр — из TSTC и TSTCP; `Kind` (отчёт, диалог, параметрическая, вариантная, OO, меню области) ставится только там, где строки говорят это прямо. Несуществующая транзакция — ошибка, а не пустой ответ. |
 
+## Подмены ADT (ветка `adt-fallback`)
+
+На 7.40 и 7.50 нет ADT-ресурсов, без которых vsp неудобен в работе: текстовые
+элементы, пакеты, объекты DDIC, и есть такие, которых нет ни в одном релизе. Ветка
+`adt-fallback` — это `patched` плюс небольшой набор ABAP, который подменяет их под
+`/sap/bc/adt/zvsp`, по протоколу стандартного ресурса, если он где-то есть.
+vsp находит подмены в discovery и снова идёт в стандартный ресурс, когда он у системы
+появляется (после обновления). Теги релизов начиная с `v2.60.0-patch.1` собираются из
+этой ветки.
+
+```sh
+vsp -s DEV install adt-fallback --dry-run   # что изменится
+vsp -s DEV install adt-fallback             # установить или обновить (0.9.0)
+vsp -s DEV uninstall adt-fallback           # всё убрать
+```
+
+Набор ставится в локальный пакет `$VSP_ADT_FALLBACK_POINTS` (классы `ZCL_VSP_ADT_*`,
+`ZIF_VSP_ADT_FEATURE`) плюс две реализации BAdI (`ZVSP_ADT_FALLBACK_APP`,
+`ZVSP_ADT_FALLBACK_URI_MAP`), которые создаёт временный отчёт через
+`RFC_ABAP_INSTALL_AND_RUN`; в транспорт ничего не попадает. Без этого полномочия
+`--print-report` выдаёт отчёт для запуска в SE38. `GET /sap/bc/adt/zvsp/info` называет
+версию и возможности.
+
+| Подмена | Релизы | vsp |
+|---|---|---|
+| `/textelements` (программы, классы) | 7.40, 7.50 | `vsp texts`, `GetTextElements`, `SetTextElements` |
+| `/packages` (чтение, создание, удаление) | 7.40, 7.50 | `CreatePackage`, `GetPackage` |
+| `/ddic/tables`, `/ddic/structures` (исходником) | 7.40, 7.50 | `GetTable`, `GetStructure`, `WriteSource TABL\|STRUCT` |
+| `/ddic/domains`, `/ddic/dataelements` | 7.40 (DTEL), 7.40–7.50 (DOMA) | `vsp doma\|dtel`, `GetDomain`, `WriteDomain`, `GetDataElement`, `WriteDataElement` |
+| `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |
+| `/oo/componenttexts` (стандартного нет) | 7.40 (и любой — по запросу) | описания методов, атрибутов и параметров классов и интерфейсов: из ABAP Doc или параметром `component_texts` в `WriteSource`, `WriteClass`, `DeployFromFile` |
+| `/cua/programs` (стандартного нет) | любой | GUI-статусы и заголовки программы в формате abapGit: `vsp cua get\|set`, `GetProgramCUA`, `WriteProgramCUA` |
+
+Каждая запись блокирует объект, записывает его в транспортный запрос, пишет неактивную
+версию и активирует её штатным `/sap/bc/adt/activation`, как это делает редактор.
+
 ## Настройка
 
 Приоритет маршрута: `--saprouter` > `rfc_saprouter` в `.vsp.json` >
@@ -158,8 +194,7 @@ go work init ./vibing-steampunk ./open-rfc-go
   поэтому `GetTableContents` показывает там `Length: 0` и `IsKey: false`. Так отвечает
   SAP; сами данные верные.
 - Текстовые элементы на 7.50 (проверено), а значит и на 7.40, не читаются и не пишутся: ресурса для них в ADT
-  там нет, и теперь vsp так и отвечает, а не «текстов нет». Путь через RFC
-  (`RPY_PROGRAM_READ`, `RPY_TEXTELEMENTS_INSERT`) пока не сделан.
+  там нет, и теперь vsp так и отвечает, а не «текстов нет». Их подменяет набор adt-fallback (выше).
 - `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (MCP-инструмент; `vsp rfc call`
   работает) и отладчик AMDP по-прежнему требуют WebSocket ZADT_VSP, до которого через
   SAProuter не достучаться.
