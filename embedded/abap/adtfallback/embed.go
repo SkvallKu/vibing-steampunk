@@ -107,6 +107,12 @@ var zclVspAdtCltxResource string
 //go:embed zcl_vsp_adt_cltx_feature.clas.abap
 var zclVspAdtCltxFeature string
 
+//go:embed zcl_vsp_adt_cua_resource.clas.abap
+var zclVspAdtCuaResource string
+
+//go:embed zcl_vsp_adt_cua_feature.clas.abap
+var zclVspAdtCuaFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -151,6 +157,8 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_TTYP_FEATURE", zclVspAdtTtypFeature, "vsp ADT fallback: table types feature"},
 		{"CLAS", "ZCL_VSP_ADT_CLTX_RESOURCE", zclVspAdtCltxResource, "vsp ADT fallback: component texts"},
 		{"CLAS", "ZCL_VSP_ADT_CLTX_FEATURE", zclVspAdtCltxFeature, "vsp ADT fallback: component texts feature"},
+		{"CLAS", "ZCL_VSP_ADT_CUA_RESOURCE", zclVspAdtCuaResource, "vsp ADT fallback: GUI statuses"},
+		{"CLAS", "ZCL_VSP_ADT_CUA_FEATURE", zclVspAdtCuaFeature, "vsp ADT fallback: GUI statuses feature"},
 	}
 }
 

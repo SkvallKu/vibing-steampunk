@@ -248,6 +248,14 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 		), s.handleGetTableType)
 	}
 
+	if shouldRegister("GetProgramCUA") {
+		s.mcpServer.AddTool(mcp.NewTool("GetProgramCUA",
+			mcp.WithDescription("Read the GUI statuses and titles of a program (SE41, its CUA) in abapGit's format: the CUA node of a .prog.xml as asXML (ADM; STA, FUN, MEN, MTX, ACT, BUT, PFK, SET, DOC, TIT, BIV with RSMPE_* rows). Read one before writing one: WriteProgramCUA replaces the whole CUA. Needs the adt-fallback set 0.9.0+."),
+			mcp.WithString("program", mcp.Required(), mcp.Description("Program name (executable or module pool)")),
+			mcp.WithString("version", mcp.Description("active or inactive; the newest you may see when empty")),
+		), s.handleGetProgramCUA)
+	}
+
 	if shouldRegister("GetAPIReleaseState") {
 		s.mcpServer.AddTool(mcp.NewTool("GetAPIReleaseState",
 			mcp.WithDescription("Check API release state for S/4HANA Clean Core / ABAP Cloud compatibility. Returns whether an object is released for cloud development and key user apps. Use SearchObject first to get the object URI."),
