@@ -84,7 +84,7 @@ vsp находит подмены в discovery и снова идёт в ста�
 
 ```sh
 vsp -s DEV install adt-fallback --dry-run   # что изменится
-vsp -s DEV install adt-fallback             # установить или обновить (0.9.0)
+vsp -s DEV install adt-fallback             # установить или обновить (0.10.0)
 vsp -s DEV uninstall adt-fallback           # всё убрать
 ```
 
@@ -104,6 +104,7 @@ vsp -s DEV uninstall adt-fallback           # всё убрать
 | `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |
 | `/oo/componenttexts` (стандартного нет) | 7.40 (и любой — по запросу) | описания методов, атрибутов и параметров классов и интерфейсов: из ABAP Doc или параметром `component_texts` в `WriteSource`, `WriteClass`, `DeployFromFile` |
 | `/cua/programs` (стандартного нет) | любой | GUI-статусы и заголовки программы в формате abapGit: `vsp cua get\|set`, `GetProgramCUA`, `WriteProgramCUA` |
+| `/ci/checkvariants`, `/ci/checks` (стандартного нет до объектов CHKV) | любой | глобальные варианты проверок Code Inspector, которые ATC берёт по имени: `vsp atc variant get\|set\|delete`, `vsp atc checks`, `GetCheckVariant`, `WriteCheckVariant`, `DeleteCheckVariant`, `ListCodeInspectorChecks`. Пишутся только Z*/Y* без транспорта; без блокировки, транспорта и активации |
 
 Каждая запись блокирует объект, записывает его в транспортный запрос, пишет неактивную
 версию и активирует её штатным `/sap/bc/adt/activation`, как это делает редактор.

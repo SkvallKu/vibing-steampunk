@@ -1308,6 +1308,31 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "Delete a global Code Inspector check variant (Z*/Y*, not transported). Needs the adt-fallback set 0.10.0+.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Check variant name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "DeleteCheckVariant"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleDeleteCheckVariant-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "Delete an ABAP object (requires lock)",
       "inputSchema": {
         "properties": {
@@ -2068,6 +2093,31 @@
       "name": "GetCheckRunResults"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetCheckRunResults-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Read a global Code Inspector (SCI) check variant, the one RunATCCheck takes as variant on releases without ATC check variant objects (7.40, 7.50). Returns its checks and their parameters in the line format WriteCheckVariant takes: description TAB text; check TAB CLASS; param TAB CLASS TAB NAME TAB value(s). Needs the adt-fallback set 0.10.0+.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Check variant name, e.g. ZVSP_LOGIC",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "GetCheckVariant"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleGetCheckVariant-fm"
   },
   {
     "tool": {
@@ -3688,6 +3738,29 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "List the checks registered in Code Inspector, what goes into a check variant: class, version, category, title, and with check= set the parameters with their default values. Needs the adt-fallback set 0.10.0+.",
+      "inputSchema": {
+        "properties": {
+          "check": {
+            "description": "One check class, e.g. CL_CI_TEST_SYSUBRC; all when empty",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "ListCodeInspectorChecks"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleListCodeInspectorChecks-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "List embedded dependency packages (abapGit editions and other optional dependencies) and whether each is available for DeployZip or `vsp install abapgit`.",
       "inputSchema": {
         "properties": {},
@@ -4916,6 +4989,36 @@
       "name": "UpdateSource"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleUpdateSource-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description\u003cTAB\u003etext', 'check\u003cTAB\u003eCL_CI_TEST_SYSUBRC', 'param\u003cTAB\u003eCL_CI_TEST_SYSUBRC\u003cTAB\u003eSELECT\u003cTAB\u003eX'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+.",
+      "inputSchema": {
+        "properties": {
+          "document": {
+            "description": "The variant in the line format (see the description)",
+            "type": "string"
+          },
+          "name": {
+            "description": "Check variant name, Z* or Y*",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "document"
+        ],
+        "type": "object"
+      },
+      "name": "WriteCheckVariant"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleWriteCheckVariant-fm"
   },
   {
     "tool": {

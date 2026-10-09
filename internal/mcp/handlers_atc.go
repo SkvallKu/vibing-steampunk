@@ -109,3 +109,51 @@ func (s *Server) handleGetATCCustomizing(ctx context.Context, request mcp.CallTo
 	output, _ := json.MarshalIndent(result, "", "  ")
 	return mcp.NewToolResultText(string(output)), nil
 }
+
+// --- Code Inspector check variants ---
+
+func (s *Server) handleGetCheckVariant(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, _ := request.GetArguments()["name"].(string)
+	if name == "" {
+		return newToolResultError("name is required"), nil
+	}
+	v, err := s.adtClient.GetCheckVariant(ctx, name)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("GetCheckVariant failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(v.Document), nil
+}
+
+func (s *Server) handleWriteCheckVariant(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, _ := request.GetArguments()["name"].(string)
+	document, _ := request.GetArguments()["document"].(string)
+	if name == "" || document == "" {
+		return newToolResultError("name and document are required"), nil
+	}
+	v, err := s.adtClient.WriteCheckVariant(ctx, name, document)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("WriteCheckVariant failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(v.Document), nil
+}
+
+func (s *Server) handleDeleteCheckVariant(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, _ := request.GetArguments()["name"].(string)
+	if name == "" {
+		return newToolResultError("name is required"), nil
+	}
+	if err := s.adtClient.DeleteCheckVariant(ctx, name); err != nil {
+		return newToolResultError(fmt.Sprintf("DeleteCheckVariant failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Deleted check variant %s", name)), nil
+}
+
+func (s *Server) handleListCodeInspectorChecks(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	check, _ := request.GetArguments()["check"].(string)
+	list, err := s.adtClient.ListCodeInspectorChecks(ctx, check)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("ListCodeInspectorChecks failed: %v", err)), nil
+	}
+	out, _ := json.MarshalIndent(list, "", "  ")
+	return mcp.NewToolResultText(string(out)), nil
+}
