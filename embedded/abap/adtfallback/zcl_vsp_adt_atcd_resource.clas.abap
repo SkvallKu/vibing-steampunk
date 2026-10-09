@@ -253,7 +253,7 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
     DATA run TYPE ty_run.
     DATA cleaner TYPE REF TO object.
 
-    IF NOT exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'DISPLAY_ID' value = id ) ).
+    IF exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'DISPLAY_ID' value = id ) ) = abap_false.
       RAISE EXCEPTION TYPE cx_adt_res_not_found
         EXPORTING
           resource_type = 'ATC_RUN'
@@ -275,7 +275,7 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
       CATCH cx_sy_create_object_error cx_sy_dyn_call_error.
         fail( |This release has no CL_SATC_AC_HOUSE_KEEPING->REMOVE_DISPLAY_LOAD| ).
     ENDTRY.
-    IF exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'DISPLAY_ID' value = id ) ).
+    IF exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'DISPLAY_ID' value = id ) ) = abap_true.
       fail( |ATC run { id_text } is locked: is it still going? Nothing was removed| ).
     ENDIF.
     result = |results{ cl_abap_char_utilities=>horizontal_tab }{ id_text }\n|.
@@ -284,11 +284,11 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
         CREATE OBJECT cleaner TYPE ('CL_SATC_HOUSE_KEEPING').
         IF run-exec_id IS NOT INITIAL
             AND exists( table = 'SATC_RT_RUN'
-                        where = |{ id_is( field = 'EXEC_ID' value = run-exec_id ) } AND CREATED_BY = '{ sy-uname }'| ).
+                        where = |{ id_is( field = 'EXEC_ID' value = run-exec_id ) } AND CREATED_BY = '{ sy-uname }'| ) = abap_true.
           CALL METHOD cleaner->('REMOVE_PROJECT_EXECUTION_DATA')
             EXPORTING
               i_execution_id = run-exec_id.
-          IF exists( table = 'SATC_RT_RUN' where = id_is( field = 'EXEC_ID' value = run-exec_id ) ).
+          IF exists( table = 'SATC_RT_RUN' where = id_is( field = 'EXEC_ID' value = run-exec_id ) ) = abap_true.
             result = |{ result }# execution { run-exec_id } is locked: left to ATC's garbage collector\n|.
           ELSE.
             result = |{ result }execution{ cl_abap_char_utilities=>horizontal_tab }{ run-exec_id }\n|.
@@ -296,15 +296,15 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
         ENDIF.
         " the project, when no other run refers to it and it is a plain one
         IF run-proj_id IS NOT INITIAL
-            AND NOT exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'PROJ_ID' value = run-proj_id ) )
-            AND NOT exists( table = 'SATC_RT_RUN' where = id_is( field = 'PROJECT_ID' value = run-proj_id ) )
+            AND exists( table = 'SATC_AC_RESULTH' where = id_is( field = 'PROJ_ID' value = run-proj_id ) ) = abap_false
+            AND exists( table = 'SATC_RT_RUN' where = id_is( field = 'PROJECT_ID' value = run-proj_id ) ) = abap_false
             AND exists( table = 'SATC_MD_DIR'
                         where = |{ id_is( field = 'REPOSITORY_ID' value = run-proj_id ) } AND KIND = 'PRJ'| &&
-                                | AND CREATED_BY = '{ sy-uname }' AND IS_PERMANENT = ' '| ).
+                                | AND CREATED_BY = '{ sy-uname }' AND IS_PERMANENT = ' '| ) = abap_true.
           CALL METHOD cleaner->('REMOVE_PROJECT_DATA')
             EXPORTING
               i_project_id = run-proj_id.
-          IF exists( table = 'SATC_MD_DIR' where = id_is( field = 'REPOSITORY_ID' value = run-proj_id ) ).
+          IF exists( table = 'SATC_MD_DIR' where = id_is( field = 'REPOSITORY_ID' value = run-proj_id ) ) = abap_true.
             result = |{ result }# project { run-proj_id } was not removed: left to ATC's garbage collector\n|.
           ELSE.
             result = |{ result }project{ cl_abap_char_utilities=>horizontal_tab }{ run-proj_id }\n|.
@@ -320,14 +320,14 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
     DATA manager TYPE REF TO object.
     DATA failure TYPE REF TO cx_root.
 
-    IF NOT exists( table = 'SATC_WL_HEAD' where = id_is( field = 'WORKLIST_ID' value = id ) ).
+    IF exists( table = 'SATC_WL_HEAD' where = id_is( field = 'WORKLIST_ID' value = id ) ) = abap_false.
       RAISE EXCEPTION TYPE cx_adt_res_not_found
         EXPORTING
           resource_type = 'ATC_WORKLIST'
           resource_id   = CONV #( id_text ).
     ENDIF.
-    IF NOT exists( table = 'SATC_WL_HEAD'
-                   where = |{ id_is( field = 'WORKLIST_ID' value = id ) } AND CREATED_BY = '{ sy-uname }'| ).
+    IF exists( table = 'SATC_WL_HEAD'
+                   where = |{ id_is( field = 'WORKLIST_ID' value = id ) } AND CREATED_BY = '{ sy-uname }'| ) = abap_false.
       fail( |ATC worklist { id_text } is not one of yours| ).
     ENDIF.
 
@@ -343,7 +343,7 @@ CLASS zcl_vsp_adt_atcd_resource IMPLEMENTATION.
       CATCH cx_root INTO failure ##CATCH_ALL.
         fail( |ATC worklist { id_text }: { failure->get_text( ) }| ).
     ENDTRY.
-    IF exists( table = 'SATC_WL_HEAD' where = id_is( field = 'WORKLIST_ID' value = id ) ).
+    IF exists( table = 'SATC_WL_HEAD' where = id_is( field = 'WORKLIST_ID' value = id ) ) = abap_true.
       fail( |ATC worklist { id_text } is locked: nothing was removed| ).
     ENDIF.
     result = |worklist{ cl_abap_char_utilities=>horizontal_tab }{ id_text }\n|.
