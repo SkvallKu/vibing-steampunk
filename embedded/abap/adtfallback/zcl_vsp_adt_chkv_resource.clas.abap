@@ -250,7 +250,7 @@ CLASS zcl_vsp_adt_chkv_resource IMPLEMENTATION.
     LOOP AT lines INTO line.
       number = sy-tabix.
       kind = condense( line ).
-      IF kind IS INITIAL OR kind CP '#*'.
+      IF kind IS INITIAL OR kind(1) = '#'.
         CONTINUE.
       ENDIF.
       SPLIT line AT cl_abap_char_utilities=>horizontal_tab INTO TABLE fields.
