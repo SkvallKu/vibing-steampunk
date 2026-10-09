@@ -141,6 +141,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 
 	switch {
+	case path == "/sap/bc/adt/discovery":
+		// Not recorded: the client reads it once to choose its way, as
+		// it does the HEAD above. ATC with worklists, as from 7.50 on.
+		w.Header().Set("Content-Type", "application/atomsvc+xml")
+		_, _ = io.WriteString(w, `<?xml version="1.0"?><app:service xmlns:app="http://www.w3.org/2007/app"><app:workspace>`+
+			`<app:collection href="/sap/bc/adt/atc/runs"/><app:collection href="/sap/bc/adt/atc/worklists"/>`+
+			`</app:workspace></app:service>`)
+		return
 	case strings.HasSuffix(path, "/datapreview/freestyle"):
 		s.serveSQL(w, string(body))
 		return
