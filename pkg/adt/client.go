@@ -21,9 +21,6 @@ type Client struct {
 	// retire the session one of them is bound to. See lock_window.go.
 	locks lockWindow
 
-	// Collections the discovery document lists, read once. See discovery_hrefs.go.
-	discovery discoveryHrefs
-
 	// rfcFetcherFactory, when non-nil, overrides the default WebSocket-backed
 	// RFC source fetcher used by GetEnhancement's fallback path. Production
 	// callers leave this nil; tests inject a stub to avoid opening a real
