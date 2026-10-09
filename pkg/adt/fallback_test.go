@@ -362,3 +362,31 @@ func TestTransportCheckRetriesWithTheStandIn(t *testing.T) {
 		t.Errorf("checked %v; want one attempt", uris)
 	}
 }
+
+// The ATC protocol check and the stand-in routing share one read of the
+// discovery document: on 7.40 it can take tens of seconds.
+func TestAdvertisesSharesTheDiscoveryOfTheStandIns(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if r.URL.Path == "/sap/bc/adt/discovery" {
+			calls++
+			w.Write([]byte(discoveryWithStandIn))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	c.FallbackPath(context.Background(), "/sap/bc/adt/textelements/programs/a")
+	if present, known := c.advertises(context.Background(), "/sap/bc/adt/atc/worklists"); present || !known {
+		t.Errorf("advertises = %v, %v; want false, true", present, known)
+	}
+	if present, _ := c.advertises(context.Background(), "/sap/bc/adt/zvsp/info"); !present {
+		t.Error("want /zvsp/info advertised")
+	}
+	if calls != 1 {
+		t.Errorf("discovery read %d times, want once", calls)
+	}
+}

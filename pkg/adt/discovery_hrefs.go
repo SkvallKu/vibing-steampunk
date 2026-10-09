@@ -2,38 +2,21 @@ package adt
 
 import (
 	"context"
-	"net/http"
 	"strings"
-	"sync"
 )
-
-// discoveryHrefs holds the collection hrefs of the discovery document, read
-// once per client, for the operations whose protocol differs by release.
-type discoveryHrefs struct {
-	mu     sync.Mutex
-	loaded bool
-	hrefs  map[string]bool
-}
 
 // advertises tells whether the discovery document lists the collection href
 // (a standard path, no query). known is false when discovery cannot be read,
-// and the caller keeps its usual way; it is asked again next time.
+// and the caller keeps its usual way; it is asked again next time. The
+// document is the one FallbackPath reads, so it is read once for both.
 func (c *Client) advertises(ctx context.Context, href string) (present, known bool) {
-	d := &c.discovery
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if !d.loaded {
-		res, err := c.transport.Request(ctx, "/sap/bc/adt/discovery", &RequestOptions{
-			Method: http.MethodGet,
-			Accept: acceptAny,
-		})
-		if err != nil || res == nil {
-			return false, false
-		}
-		d.hrefs = parseDiscoveryHrefs(string(res.Body))
-		d.loaded = true
+	r := &c.fallback
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.loaded && !r.load(ctx, c) {
+		return false, false
 	}
-	return d.hrefs[strings.ToLower(href)], true
+	return r.hrefs[strings.ToLower(href)], true
 }
 
 // parseDiscoveryHrefs collects every href of the discovery document, in lower

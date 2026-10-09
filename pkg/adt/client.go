@@ -21,9 +21,6 @@ type Client struct {
 	// retire the session one of them is bound to. See lock_window.go.
 	locks lockWindow
 
-	// Collections the discovery document lists, read once. See discovery_hrefs.go.
-	discovery discoveryHrefs
-
 	// What the data preview of this system turned out not to take. See query_sql.go.
 	preview dataPreviewMemory
 

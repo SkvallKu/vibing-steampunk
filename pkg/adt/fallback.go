@@ -121,25 +121,7 @@ func (r *fallbackRoutes) load(ctx context.Context, c *Client) bool {
 // for each stand-in collection under FallbackRoot, the standard path it
 // covers. Hrefs are compared in lower case: ADT paths are.
 func parseFallbackDiscovery(body string) (map[string]bool, []string) {
-	hrefs := map[string]bool{}
-	const marker = `href="`
-	for {
-		i := strings.Index(body, marker)
-		if i < 0 {
-			break
-		}
-		rest := body[i+len(marker):]
-		j := strings.Index(rest, `"`)
-		if j < 0 {
-			break
-		}
-		href := strings.ToLower(rest[:j])
-		if k := strings.IndexAny(href, "?{"); k >= 0 {
-			href = strings.TrimSuffix(href[:k], "/")
-		}
-		hrefs[href] = true
-		body = rest[j:]
-	}
+	hrefs := parseDiscoveryHrefs(body)
 	var covered []string
 	seen := map[string]bool{}
 	for href := range hrefs {
