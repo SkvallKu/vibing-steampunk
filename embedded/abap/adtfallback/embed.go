@@ -125,6 +125,12 @@ var zclVspAdtCichkResource string
 //go:embed zcl_vsp_adt_ci_feature.clas.abap
 var zclVspAdtCiFeature string
 
+//go:embed zcl_vsp_adt_atcd_resource.clas.abap
+var zclVspAdtAtcdResource string
+
+//go:embed zcl_vsp_adt_atcd_feature.clas.abap
+var zclVspAdtAtcdFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -175,6 +181,8 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_CHKV_RESOURCE", zclVspAdtChkvResource, "vsp ADT fallback: check variants"},
 		{"CLAS", "ZCL_VSP_ADT_CICHK_RESOURCE", zclVspAdtCichkResource, "vsp ADT fallback: Code Inspector checks"},
 		{"CLAS", "ZCL_VSP_ADT_CI_FEATURE", zclVspAdtCiFeature, "vsp ADT fallback: Code Inspector feature"},
+		{"CLAS", "ZCL_VSP_ADT_ATCD_RESOURCE", zclVspAdtAtcdResource, "vsp ADT fallback: own ATC runs and worklists"},
+		{"CLAS", "ZCL_VSP_ADT_ATCD_FEATURE", zclVspAdtAtcdFeature, "vsp ADT fallback: own ATC data feature"},
 	}
 }
 

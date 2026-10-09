@@ -48,6 +48,9 @@ standard resource (after an upgrade) vsp uses that again. Covered now:
                               global Code Inspector check variants, the ones ATC
                               runs by name: vsp atc variant, vsp atc checks,
                               GetCheckVariant, WriteCheckVariant
+  /atcdata (ADT has no DELETE for ATC runs) — your own ATC runs and
+                              worklists, listed and deleted: vsp atc runs,
+                              ListATCRuns, DeleteATCRuns
 The table and structure source is 7.50's own where the release has it,
 and vsp's (the same language, checked against 7.50's) where it does not.
 

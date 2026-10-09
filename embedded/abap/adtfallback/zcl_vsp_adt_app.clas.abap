@@ -11,7 +11,7 @@ CLASS zcl_vsp_adt_app DEFINITION
 
   PUBLIC SECTION.
     "! The version of the installed set; vsp compares it with its own.
-    CONSTANTS co_version TYPE string VALUE '0.10.0'.
+    CONSTANTS co_version TYPE string VALUE '0.11.0'.
     CONSTANTS co_scheme TYPE string
       VALUE 'http://www.sap.com/adt/categories/vsp/adtfallback'.
 

@@ -1283,6 +1283,31 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
+      "description": "Delete ATC runs and worklists of yours by id, as ListATCRuns gives them: a run's results, execution and (when nothing else refers to it) project, or a worklist. Only your own; nothing else is ever deleted by RunATCCheck. Needs the adt-fallback set 0.11.0+.",
+      "inputSchema": {
+        "properties": {
+          "ids": {
+            "description": "IDs from ListATCRuns, separated by commas or spaces",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "name": "DeleteATCRuns"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleDeleteATCRuns-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
       "description": "Delete a breakpoint by ID, or pass 'all' to remove every breakpoint this session registered.",
       "inputSchema": {
         "properties": {
@@ -3717,6 +3742,41 @@
       "name": "InstallZADTVSP"
     },
     "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleInstallZADTVSP-fm"
+  },
+  {
+    "tool": {
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "description": "List the ATC runs and worklists ATC keeps for you (results 3 days, execution 6, project 17, worklist 7; ATC's garbage collector removes only expired ones, ADT cannot delete them). One JSON entry each: kind (run|worklist), id, variant, on and expires (UTC YYYYMMDDhhmmss), findings by priority (run) or objects (worklist), title. Only your own in this system and client, never run series or central runs. Needs the adt-fallback set 0.11.0+.",
+      "inputSchema": {
+        "properties": {
+          "from": {
+            "description": "Scheduled or changed at or after, UTC YYYYMMDDhhmmss",
+            "type": "string"
+          },
+          "object": {
+            "description": "Object: a run's title, one of a worklist's objects; pattern with *",
+            "type": "string"
+          },
+          "to": {
+            "description": "Scheduled or changed at or before, UTC YYYYMMDDhhmmss",
+            "type": "string"
+          },
+          "variant": {
+            "description": "Check variant, pattern with *",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "ListATCRuns"
+    },
+    "handler": "github.com/oisee/vibing-steampunk/internal/mcp.(*Server).handleListATCRuns-fm"
   },
   {
     "tool": {
