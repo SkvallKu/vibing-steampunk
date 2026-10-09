@@ -113,6 +113,18 @@ var zclVspAdtCuaResource string
 //go:embed zcl_vsp_adt_cua_feature.clas.abap
 var zclVspAdtCuaFeature string
 
+//go:embed zcl_vsp_adt_ci_params.clas.abap
+var zclVspAdtCiParams string
+
+//go:embed zcl_vsp_adt_chkv_resource.clas.abap
+var zclVspAdtChkvResource string
+
+//go:embed zcl_vsp_adt_cichk_resource.clas.abap
+var zclVspAdtCichkResource string
+
+//go:embed zcl_vsp_adt_ci_feature.clas.abap
+var zclVspAdtCiFeature string
+
 //go:embed zvsp_adt_fallback_enho.prog.abap
 var enhoReport string
 
@@ -159,6 +171,10 @@ func Objects() []Object {
 		{"CLAS", "ZCL_VSP_ADT_CLTX_FEATURE", zclVspAdtCltxFeature, "vsp ADT fallback: component texts feature"},
 		{"CLAS", "ZCL_VSP_ADT_CUA_RESOURCE", zclVspAdtCuaResource, "vsp ADT fallback: GUI statuses"},
 		{"CLAS", "ZCL_VSP_ADT_CUA_FEATURE", zclVspAdtCuaFeature, "vsp ADT fallback: GUI statuses feature"},
+		{"CLAS", "ZCL_VSP_ADT_CI_PARAMS", zclVspAdtCiParams, "vsp ADT fallback: check parameters"},
+		{"CLAS", "ZCL_VSP_ADT_CHKV_RESOURCE", zclVspAdtChkvResource, "vsp ADT fallback: check variants"},
+		{"CLAS", "ZCL_VSP_ADT_CICHK_RESOURCE", zclVspAdtCichkResource, "vsp ADT fallback: Code Inspector checks"},
+		{"CLAS", "ZCL_VSP_ADT_CI_FEATURE", zclVspAdtCiFeature, "vsp ADT fallback: Code Inspector feature"},
 	}
 }
 

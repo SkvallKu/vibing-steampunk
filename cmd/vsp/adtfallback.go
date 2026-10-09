@@ -44,6 +44,10 @@ standard resource (after an upgrade) vsp uses that again. Covered now:
   /cua/programs               (no standard resource) — GUI statuses and titles of
                               a program, abapGit's format: vsp cua, GetProgramCUA,
                               WriteProgramCUA
+  /ci/checkvariants, /ci/checks (no standard resource before CHKV objects) —
+                              global Code Inspector check variants, the ones ATC
+                              runs by name: vsp atc variant, vsp atc checks,
+                              GetCheckVariant, WriteCheckVariant
 The table and structure source is 7.50's own where the release has it,
 and vsp's (the same language, checked against 7.50's) where it does not.
 

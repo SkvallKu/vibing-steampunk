@@ -113,6 +113,49 @@ func (s *Server) registerDevTools(shouldRegister func(string) bool) {
 		), s.handleGetATCCustomizing)
 	}
 
+	if shouldRegister("GetCheckVariant") {
+		s.mcpServer.AddTool(mcp.NewTool("GetCheckVariant",
+			mcp.WithDescription("Read a global Code Inspector (SCI) check variant, the one RunATCCheck takes as variant on releases without ATC check variant objects (7.40, 7.50). Returns its checks and their parameters in the line format WriteCheckVariant takes: description TAB text; check TAB CLASS; param TAB CLASS TAB NAME TAB value(s). Needs the adt-fallback set 0.10.0+."),
+			mcp.WithString("name",
+				mcp.Required(),
+				mcp.Description("Check variant name, e.g. ZVSP_LOGIC"),
+			),
+		), s.handleGetCheckVariant)
+	}
+
+	if shouldRegister("WriteCheckVariant") {
+		s.mcpServer.AddTool(mcp.NewTool("WriteCheckVariant",
+			mcp.WithDescription("Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description<TAB>text', 'check<TAB>CL_CI_TEST_SYSUBRC', 'param<TAB>CL_CI_TEST_SYSUBRC<TAB>SELECT<TAB>X'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+."),
+			mcp.WithString("name",
+				mcp.Required(),
+				mcp.Description("Check variant name, Z* or Y*"),
+			),
+			mcp.WithString("document",
+				mcp.Required(),
+				mcp.Description("The variant in the line format (see the description)"),
+			),
+		), s.handleWriteCheckVariant)
+	}
+
+	if shouldRegister("DeleteCheckVariant") {
+		s.mcpServer.AddTool(mcp.NewTool("DeleteCheckVariant",
+			mcp.WithDescription("Delete a global Code Inspector check variant (Z*/Y*, not transported). Needs the adt-fallback set 0.10.0+."),
+			mcp.WithString("name",
+				mcp.Required(),
+				mcp.Description("Check variant name"),
+			),
+		), s.handleDeleteCheckVariant)
+	}
+
+	if shouldRegister("ListCodeInspectorChecks") {
+		s.mcpServer.AddTool(mcp.NewTool("ListCodeInspectorChecks",
+			mcp.WithDescription("List the checks registered in Code Inspector, what goes into a check variant: class, version, category, title, and with check= set the parameters with their default values. Needs the adt-fallback set 0.10.0+."),
+			mcp.WithString("check",
+				mcp.Description("One check class, e.g. CL_CI_TEST_SYSUBRC; all when empty"),
+			),
+		), s.handleListCodeInspectorChecks)
+	}
+
 	if shouldRegister("PrettyPrint") {
 		s.mcpServer.AddTool(mcp.NewTool("PrettyPrint",
 			mcp.WithDescription("Format ABAP source code using the pretty printer"),

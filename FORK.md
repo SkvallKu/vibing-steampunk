@@ -79,7 +79,7 @@ resource again once the system has it (after an upgrade). Release tags from
 
 ```sh
 vsp -s DEV install adt-fallback --dry-run   # what would change
-vsp -s DEV install adt-fallback             # install or update (0.9.0)
+vsp -s DEV install adt-fallback             # install or update (0.10.0)
 vsp -s DEV uninstall adt-fallback           # remove everything again
 ```
 
@@ -99,6 +99,7 @@ authorization `--print-report` gives the report to run in SE38.
 | `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |
 | `/oo/componenttexts` (no standard resource) | 7.40 (and any, by request) | method, attribute and parameter short texts of classes and interfaces: from ABAP Doc, or given as `component_texts` to `WriteSource`, `WriteClass`, `DeployFromFile` |
 | `/cua/programs` (no standard resource) | any | GUI statuses and titles of a program in abapGit's format: `vsp cua get\|set`, `GetProgramCUA`, `WriteProgramCUA` |
+| `/ci/checkvariants`, `/ci/checks` (no standard resource before CHKV objects) | any | global Code Inspector check variants, the ones ATC runs by name: `vsp atc variant get\|set\|delete`, `vsp atc checks`, `GetCheckVariant`, `WriteCheckVariant`, `DeleteCheckVariant`, `ListCodeInspectorChecks`. Only Z*/Y* variants that are not transported are written; no lock, transport or activation |
 
 Each write locks, records the object in the transport request, writes the
 inactive version and activates it through the standard `/sap/bc/adt/activation`,

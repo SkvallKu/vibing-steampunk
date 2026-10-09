@@ -11,6 +11,7 @@ func toolGroups() map[string][]string {
 		},
 		"T": { // Test tools
 			"RunUnitTests", "RunATCCheck",
+			"GetCheckVariant", "WriteCheckVariant", "DeleteCheckVariant", "ListCodeInspectorChecks",
 		},
 		"H": { // HANA/AMDP debugger
 			"AMDPDebuggerStart", "AMDPDebuggerResume", "AMDPDebuggerStop",
