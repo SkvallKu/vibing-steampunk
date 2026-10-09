@@ -112,7 +112,7 @@ func (c *Client) DeleteATCData(ctx context.Context, kind, id string) ([]string, 
 	if len(id) != 32 || strings.Trim(id, "0123456789ABCDEF") != "" {
 		return nil, fmt.Errorf("ATC %s id %q: want 32 hex digits", kind, id)
 	}
-	if err := c.atcDataDeleteAllowed(ctx); err != nil {
+	if err := c.atcDataDeleteAllowed(); err != nil {
 		return nil, err
 	}
 	if err := c.requireATCDataFeature(ctx); err != nil {
@@ -135,15 +135,12 @@ func (c *Client) DeleteATCData(ctx context.Context, kind, id string) ([]string, 
 }
 
 // atcDataDeleteAllowed passes a delete through the safety settings. A run
-// belongs to no package, so with allowed packages set it is refused.
-func (c *Client) atcDataDeleteAllowed(ctx context.Context) error {
-	if err := c.checkSafety(OpDelete, "DeleteATCData"); err != nil {
-		return err
-	}
-	if len(c.config.Safety.AllowedPackages) > 0 {
-		return fmt.Errorf("DeleteATCData is refused while allowed packages are set: an ATC run belongs to no package")
-	}
-	return c.checkMutation(ctx, MutationContext{Op: OpDelete, OpName: "DeleteATCData"})
+// belongs to no package, so allowed packages do not apply: the boundary is
+// its owner, and the set deletes only the user's own runs and worklists.
+// Of the mutation gate only the operation check applies: there is no
+// package to resolve and no transport.
+func (c *Client) atcDataDeleteAllowed() error {
+	return c.checkSafety(OpDelete, "DeleteATCData")
 }
 
 // ATCDataDeletion is what became of one ID of DeleteATCDataByID.
@@ -160,7 +157,7 @@ func (c *Client) DeleteATCDataByID(ctx context.Context, ids []string) ([]ATCData
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("no ATC run or worklist ID given")
 	}
-	if err := c.atcDataDeleteAllowed(ctx); err != nil {
+	if err := c.atcDataDeleteAllowed(); err != nil {
 		return nil, err
 	}
 	list, err := c.ListATCData(ctx, ATCDataFilter{})

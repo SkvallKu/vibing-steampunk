@@ -1333,7 +1333,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Delete a global Code Inspector check variant (Z*/Y*, not transported). Needs the adt-fallback set 0.10.0+.",
+      "description": "Delete a global Code Inspector check variant (Z*/Y*, not transported; with allowed packages set, only one you changed last, set 0.12.0+). Needs the adt-fallback set 0.10.0+.",
       "inputSchema": {
         "properties": {
           "name": {
@@ -5046,7 +5046,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description\u003cTAB\u003etext', 'check\u003cTAB\u003eCL_CI_TEST_SYSUBRC', 'param\u003cTAB\u003eCL_CI_TEST_SYSUBRC\u003cTAB\u003eSELECT\u003cTAB\u003eX'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+.",
+      "description": "Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description\u003cTAB\u003etext', 'check\u003cTAB\u003eCL_CI_TEST_SYSUBRC', 'param\u003cTAB\u003eCL_CI_TEST_SYSUBRC\u003cTAB\u003eSELECT\u003cTAB\u003eX'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. With allowed packages set, only a variant you changed last is replaced (a variant belongs to no package; needs the set 0.12.0+). SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+.",
       "inputSchema": {
         "properties": {
           "document": {

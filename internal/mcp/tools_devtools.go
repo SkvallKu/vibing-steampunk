@@ -125,7 +125,7 @@ func (s *Server) registerDevTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("WriteCheckVariant") {
 		s.mcpServer.AddTool(mcp.NewTool("WriteCheckVariant",
-			mcp.WithDescription("Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description<TAB>text', 'check<TAB>CL_CI_TEST_SYSUBRC', 'param<TAB>CL_CI_TEST_SYSUBRC<TAB>SELECT<TAB>X'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+."),
+			mcp.WithDescription("Create a global Code Inspector check variant, or replace its checks, for RunATCCheck(variant=...). The document is text, TAB-separated, one item per line: 'description<TAB>text', 'check<TAB>CL_CI_TEST_SYSUBRC', 'param<TAB>CL_CI_TEST_SYSUBRC<TAB>SELECT<TAB>X'. A table parameter takes one param line per row; a check's parameters not named keep the check's own value (ListCodeInspectorChecks shows them). Only Z*/Y* variants that are not transported are written; a new one is saved without transport. With allowed packages set, only a variant you changed last is replaced (a variant belongs to no package; needs the set 0.12.0+). SLIN (CL_CI_TEST_EXTENDED_CHECK) applies its FLAGS-X_* only with CUSTOM_CHECK=X and STANDARD_CHECK empty. Needs the adt-fallback set 0.10.0+."),
 			mcp.WithString("name",
 				mcp.Required(),
 				mcp.Description("Check variant name, Z* or Y*"),
@@ -139,7 +139,7 @@ func (s *Server) registerDevTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("DeleteCheckVariant") {
 		s.mcpServer.AddTool(mcp.NewTool("DeleteCheckVariant",
-			mcp.WithDescription("Delete a global Code Inspector check variant (Z*/Y*, not transported). Needs the adt-fallback set 0.10.0+."),
+			mcp.WithDescription("Delete a global Code Inspector check variant (Z*/Y*, not transported; with allowed packages set, only one you changed last, set 0.12.0+). Needs the adt-fallback set 0.10.0+."),
 			mcp.WithString("name",
 				mcp.Required(),
 				mcp.Description("Check variant name"),

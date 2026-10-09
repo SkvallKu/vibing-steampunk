@@ -70,7 +70,7 @@ func TestParseCodeInspectorChecks(t *testing.T) {
 	}
 }
 
-func ciServer(t *testing.T, features string, calls *[]string, body *string) *httptest.Server {
+func ciServer(t *testing.T, version, features string, calls *[]string, body *string) *httptest.Server {
 	t.Helper()
 	var mu sync.Mutex
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -81,9 +81,13 @@ func ciServer(t *testing.T, features string, calls *[]string, body *string) *htt
 		case p == "/sap/bc/adt/discovery":
 			w.Write([]byte(`<app:collection href="/sap/bc/adt/zvsp/info"/><app:collection href="/sap/bc/adt/zvsp/ci/checkvariants"/>`))
 		case p == "/sap/bc/adt/zvsp/info":
-			w.Write([]byte("version=0.10.0\nfeatures=" + features + "\n"))
+			w.Write([]byte("version=" + version + "\nfeatures=" + features + "\n"))
 		case p == "/sap/bc/adt/zvsp/ci/checkvariants/ZVSP_LOGIC":
-			*calls = append(*calls, r.Method)
+			if r.URL.Query().Get("own") != "" {
+				*calls = append(*calls, r.Method+" own="+r.URL.Query().Get("own"))
+			} else {
+				*calls = append(*calls, r.Method)
+			}
 			switch r.Method {
 			case http.MethodPut:
 				b, _ := io.ReadAll(r.Body)
@@ -106,7 +110,7 @@ func ciServer(t *testing.T, features string, calls *[]string, body *string) *htt
 func TestWriteCheckVariant(t *testing.T) {
 	var calls []string
 	var body string
-	srv := ciServer(t, "/textelements,/ci", &calls, &body)
+	srv := ciServer(t, "0.10.0", "/textelements,/ci", &calls, &body)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "user", "pass")
@@ -131,7 +135,7 @@ func TestWriteCheckVariant(t *testing.T) {
 func TestListCodeInspectorChecks(t *testing.T) {
 	var calls []string
 	var body string
-	srv := ciServer(t, "/ci", &calls, &body)
+	srv := ciServer(t, "0.10.0", "/ci", &calls, &body)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "user", "pass")
@@ -150,7 +154,7 @@ func TestListCodeInspectorChecks(t *testing.T) {
 func TestCheckVariantNeedsTheSet(t *testing.T) {
 	var calls []string
 	var body string
-	srv := ciServer(t, "/textelements", &calls, &body)
+	srv := ciServer(t, "0.10.0", "/textelements", &calls, &body)
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "user", "pass")
@@ -168,7 +172,7 @@ func TestCheckVariantNeedsTheSet(t *testing.T) {
 func TestCheckVariantWritesPassTheSafetyGate(t *testing.T) {
 	var calls []string
 	var body string
-	srv := ciServer(t, "/ci", &calls, &body)
+	srv := ciServer(t, "0.10.0", "/ci", &calls, &body)
 	defer srv.Close()
 
 	readOnly := NewClient(srv.URL, "user", "pass", WithReadOnly())
@@ -178,9 +182,11 @@ func TestCheckVariantWritesPassTheSafetyGate(t *testing.T) {
 	if err := readOnly.DeleteCheckVariant(context.Background(), "ZVSP_LOGIC"); err == nil {
 		t.Error("delete in read-only mode went through")
 	}
+	// With allowed packages a set before 0.12.0 cannot keep the write to
+	// own variants: refused before anything is sent.
 	packages := NewClient(srv.URL, "user", "pass", WithAllowedPackages("$ZDEMO"))
-	if _, err := packages.WriteCheckVariant(context.Background(), "ZVSP_LOGIC", checkVariantDoc); err == nil || !strings.Contains(err.Error(), "belongs to no package") {
-		t.Errorf("write with allowed packages: %v", err)
+	if _, err := packages.WriteCheckVariant(context.Background(), "ZVSP_LOGIC", checkVariantDoc); err == nil || !strings.Contains(err.Error(), "0.12.0") {
+		t.Errorf("write with allowed packages on 0.10.0: %v", err)
 	}
 	if len(calls) != 0 {
 		t.Errorf("calls %v", calls)
@@ -188,5 +194,47 @@ func TestCheckVariantWritesPassTheSafetyGate(t *testing.T) {
 	// Reading stays allowed.
 	if _, err := readOnly.GetCheckVariant(context.Background(), "ZVSP_LOGIC"); err != nil {
 		t.Errorf("read in read-only mode: %v", err)
+	}
+}
+
+func TestCheckVariantWritesWithAllowedPackagesAskForOwn(t *testing.T) {
+	var calls []string
+	var body string
+	srv := ciServer(t, "0.12.0", "/ci", &calls, &body)
+	defer srv.Close()
+
+	packages := NewClient(srv.URL, "user", "pass", WithAllowedPackages("$ZDEMO"))
+	if _, err := packages.WriteCheckVariant(context.Background(), "ZVSP_LOGIC", checkVariantDoc); err != nil {
+		t.Fatal(err)
+	}
+	if err := packages.DeleteCheckVariant(context.Background(), "ZVSP_LOGIC"); err != nil {
+		t.Fatal(err)
+	}
+	// Without allowed packages the writes stay as they were.
+	if _, err := NewClient(srv.URL, "user", "pass").WriteCheckVariant(context.Background(), "ZVSP_LOGIC", checkVariantDoc); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{http.MethodPut + " own=X", http.MethodDelete + " own=X", http.MethodPut}; !reflect.DeepEqual(calls, want) {
+		t.Errorf("calls %v, want %v", calls, want)
+	}
+}
+
+func TestVersionAtLeast(t *testing.T) {
+	for _, tc := range []struct {
+		have, want string
+		ok         bool
+	}{
+		{"0.12.0", "0.12.0", true},
+		{"0.12.1", "0.12.0", true},
+		{"1.0.0", "0.12.0", true},
+		{"0.11.0", "0.12.0", false},
+		{"0.9.0", "0.12.0", false},
+		{"0.12", "0.12.0", true},
+		{"", "0.12.0", false},
+		{"x", "0.12.0", false},
+	} {
+		if got := versionAtLeast(tc.have, tc.want); got != tc.ok {
+			t.Errorf("versionAtLeast(%q, %q) = %v", tc.have, tc.want, got)
+		}
 	}
 }

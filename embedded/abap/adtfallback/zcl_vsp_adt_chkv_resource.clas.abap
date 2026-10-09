@@ -16,7 +16,10 @@
 "! written or deleted: a transported one belongs to SAP or to a team, and
 "! CL_CI_CHECKVARIANT would take it out of its transport on save. A new
 "! variant is saved without transport. The lock (E_SCI_NM) is taken and
-"! released within the request.
+"! released within the request. With ?own=X a PUT or DELETE changes only a
+"! variant the user changed last (UNAM; SCI keeps no author) and a PUT may
+"! create one: vsp sends it when the connection is held to packages, so
+"! that a variant of a team is not touched from there.
 CLASS zcl_vsp_adt_chkv_resource DEFINITION
   PUBLIC
   INHERITING FROM cl_adt_rest_resource
@@ -34,6 +37,7 @@ CLASS zcl_vsp_adt_chkv_resource DEFINITION
       VALUE 'text/plain; charset=utf-8' ##NO_TEXT.
 
     DATA name TYPE sci_chkv.
+    DATA own TYPE abap_bool.
 
     METHODS parse_uri
       IMPORTING request TYPE REF TO if_adt_rest_request
@@ -194,6 +198,12 @@ CLASS zcl_vsp_adt_chkv_resource IMPLEMENTATION.
       RAISE EXCEPTION TYPE cx_adt_res_not_found.
     ENDIF.
     name = value.
+    CLEAR value.
+    request->get_uri_query_parameter(
+      EXPORTING name      = 'own'
+                mandatory = abap_false
+      IMPORTING value     = value ).
+    own = boolc( to_upper( condense( value ) ) = 'X' ).
   ENDMETHOD.
 
 
@@ -219,6 +229,9 @@ CLASS zcl_vsp_adt_chkv_resource IMPLEMENTATION.
     ENDIF.
     IF variant IS BOUND AND variant->chkvinf-transport IS NOT INITIAL.
       fail( |{ name } is transported: change it in SCI under a transport request| ).
+    ENDIF.
+    IF own = abap_true AND variant IS BOUND AND variant->chkvinf-unam <> sy-uname.
+      fail( |{ name } was last changed by { variant->chkvinf-unam }: only own variants are written or deleted here| ).
     ENDIF.
   ENDMETHOD.
 
