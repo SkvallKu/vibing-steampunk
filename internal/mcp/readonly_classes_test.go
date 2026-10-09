@@ -79,6 +79,8 @@ var readOnlyClasses = map[string]surfaceClass{
 	"tool ListCodeInspectorChecks":  clsRead,
 	"tool WriteCheckVariant":        clsMutate,
 	"tool DeleteCheckVariant":       clsMutate,
+	"tool ListATCRuns":              clsRead,
+	"tool DeleteATCRuns":            clsMutate,
 	"tool GetAbapHelp":              clsRead,
 	"tool GetAsyncResult":           clsRead,
 	"tool GetBreakpoints":           clsRead,

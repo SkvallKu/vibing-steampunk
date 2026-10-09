@@ -156,6 +156,34 @@ func (s *Server) registerDevTools(shouldRegister func(string) bool) {
 		), s.handleListCodeInspectorChecks)
 	}
 
+	if shouldRegister("ListATCRuns") {
+		s.mcpServer.AddTool(mcp.NewTool("ListATCRuns",
+			mcp.WithDescription("List the ATC runs and worklists ATC keeps for you (results 3 days, execution 6, project 17, worklist 7; ATC's garbage collector removes only expired ones, ADT cannot delete them). One JSON entry each: kind (run|worklist), id, variant, on and expires (UTC YYYYMMDDhhmmss), findings by priority (run) or objects (worklist), title. Only your own in this system and client, never run series or central runs. Needs the adt-fallback set 0.11.0+."),
+			mcp.WithString("variant",
+				mcp.Description("Check variant, pattern with *"),
+			),
+			mcp.WithString("object",
+				mcp.Description("Object: a run's title, one of a worklist's objects; pattern with *"),
+			),
+			mcp.WithString("from",
+				mcp.Description("Scheduled or changed at or after, UTC YYYYMMDDhhmmss"),
+			),
+			mcp.WithString("to",
+				mcp.Description("Scheduled or changed at or before, UTC YYYYMMDDhhmmss"),
+			),
+		), s.handleListATCRuns)
+	}
+
+	if shouldRegister("DeleteATCRuns") {
+		s.mcpServer.AddTool(mcp.NewTool("DeleteATCRuns",
+			mcp.WithDescription("Delete ATC runs and worklists of yours by id, as ListATCRuns gives them: a run's results, execution and (when nothing else refers to it) project, or a worklist. Only your own; nothing else is ever deleted by RunATCCheck. Needs the adt-fallback set 0.11.0+."),
+			mcp.WithString("ids",
+				mcp.Required(),
+				mcp.Description("IDs from ListATCRuns, separated by commas or spaces"),
+			),
+		), s.handleDeleteATCRuns)
+	}
+
 	if shouldRegister("PrettyPrint") {
 		s.mcpServer.AddTool(mcp.NewTool("PrettyPrint",
 			mcp.WithDescription("Format ABAP source code using the pretty printer"),

@@ -17,7 +17,7 @@ import (
 const (
 	wantHyperfocusedTools = 1
 	wantFocusedTools      = 98
-	wantExpertTools       = 161
+	wantExpertTools       = 163
 )
 
 // serverForMode builds a server without touching a network. NewServer only

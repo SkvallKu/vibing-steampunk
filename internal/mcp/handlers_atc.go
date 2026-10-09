@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/oisee/vibing-steampunk/pkg/adt"
@@ -156,4 +157,50 @@ func (s *Server) handleListCodeInspectorChecks(ctx context.Context, request mcp.
 	}
 	out, _ := json.MarshalIndent(list, "", "  ")
 	return mcp.NewToolResultText(string(out)), nil
+}
+
+// --- Own ATC runs and worklists ---
+
+func (s *Server) handleListATCRuns(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	var f adt.ATCDataFilter
+	f.Variant, _ = args["variant"].(string)
+	f.Title, _ = args["object"].(string)
+	f.From, _ = args["from"].(string)
+	f.To, _ = args["to"].(string)
+	list, err := s.adtClient.ListATCData(ctx, f)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("ListATCRuns failed: %v", err)), nil
+	}
+	out, _ := json.MarshalIndent(list, "", "  ")
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+func (s *Server) handleDeleteATCRuns(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw, _ := request.GetArguments()["ids"].(string)
+	ids := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' })
+	if len(ids) == 0 {
+		return newToolResultError("ids is required"), nil
+	}
+	results, err := s.adtClient.DeleteATCDataByID(ctx, ids)
+	if err != nil {
+		return newToolResultError(fmt.Sprintf("DeleteATCRuns failed: %v", err)), nil
+	}
+	var b strings.Builder
+	failed := 0
+	for _, r := range results {
+		if r.Error != "" {
+			failed++
+			fmt.Fprintf(&b, "FAILED %s %s: %s\n", r.Kind, r.ID, r.Error)
+			continue
+		}
+		fmt.Fprintf(&b, "deleted %s %s\n", r.Kind, r.ID)
+		for _, line := range r.Lines {
+			fmt.Fprintf(&b, "  %s\n", line)
+		}
+	}
+	if failed > 0 {
+		return newToolResultError(b.String()), nil
+	}
+	return mcp.NewToolResultText(b.String()), nil
 }
