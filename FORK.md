@@ -82,7 +82,7 @@ resource again once the system has it (after an upgrade). Release tags from
 
 ```sh
 vsp -s DEV install adt-fallback --dry-run   # what would change
-vsp -s DEV install adt-fallback             # install or update (0.12.0)
+vsp -s DEV install adt-fallback             # install or update (0.12.1)
 vsp -s DEV uninstall adt-fallback           # remove everything again
 ```
 
