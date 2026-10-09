@@ -110,13 +110,19 @@ func TestATCDataRefusals(t *testing.T) {
 	if _, err := NewClient(srv.URL, "user", "pass", WithReadOnly()).DeleteATCData(ctx, ATCDataRun, id); err == nil {
 		t.Error("delete in read-only mode went through")
 	}
-	packages := NewClient(srv.URL, "user", "pass", WithAllowedPackages("$ZDEMO"))
-	if _, err := packages.DeleteATCData(ctx, ATCDataRun, id); err == nil || !strings.Contains(err.Error(), "belongs to no package") {
-		t.Errorf("delete with allowed packages: %v", err)
-	}
 	if len(calls) != 0 {
 		t.Errorf("calls %v", calls)
 	}
+	// A run belongs to no package: allowed packages do not hold it back,
+	// the set deletes only the user's own.
+	packages := NewClient(srv.URL, "user", "pass", WithAllowedPackages("$ZDEMO"))
+	if _, err := packages.DeleteATCData(ctx, ATCDataRun, id); err != nil {
+		t.Errorf("delete with allowed packages: %v", err)
+	}
+	if want := []string{"DELETE runs/" + id}; !reflect.DeepEqual(calls, want) {
+		t.Errorf("calls %v, want %v", calls, want)
+	}
+	calls = nil
 	// Reading stays allowed in read-only mode.
 	if _, err := NewClient(srv.URL, "user", "pass", WithReadOnly()).ListATCData(ctx, ATCDataFilter{}); err != nil {
 		t.Errorf("list in read-only mode: %v", err)

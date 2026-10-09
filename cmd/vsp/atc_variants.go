@@ -35,7 +35,10 @@ set creates the variant or replaces its checks; a check's parameters not
 named keep the check's own value (vsp atc checks shows them). A table
 parameter takes one param line per row. Only variants in the customer
 namespace (Z*, Y*) that are not transported are written or deleted, and
-a new one is saved without transport.`,
+a new one is saved without transport. A variant belongs to no package:
+with allowed packages set, only a variant you changed last is replaced
+or deleted (SCI keeps no author), and a new one may be created; that
+needs the adt-fallback set 0.12.0 or later.`,
 }
 
 func init() {

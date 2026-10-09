@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,8 @@ import (
 const ciPath = FallbackRoot + "/ci"
 
 const checkVariantContentType = "text/plain; charset=utf-8"
+
+var errNoOwnVariants = fmt.Errorf("writing a check variant while allowed packages are set needs the adt-fallback set 0.12.0 or later (vsp install adt-fallback): only that one keeps such a write to variants you changed last")
 
 var errNoCIFeature = fmt.Errorf("check variants need the adt-fallback set 0.10.0 or later (vsp install adt-fallback): releases without ATC check variant objects have no ADT resource for them")
 
@@ -79,16 +82,71 @@ func (c *Client) requireCIFeature(ctx context.Context) error {
 }
 
 // checkVariantWriteAllowed passes a write or delete of a check variant
-// through the safety settings. A variant belongs to no package, so it
-// cannot be held against --allowed-packages: with that set, it is refused.
-func (c *Client) checkVariantWriteAllowed(ctx context.Context, op OperationType, opName string) error {
+// through the safety settings. A variant belongs to no package, so with
+// allowed packages set the boundary is its owner instead: the answer own
+// asks the system to write or delete only a variant the user changed last,
+// or to create one. SCI keeps no author, only who changed it last (UNAM).
+// A set older than 0.12.0 does not know the request and is refused.
+func (c *Client) checkVariantWriteAllowed(ctx context.Context, op OperationType, opName string) (own bool, err error) {
+	// Of the mutation gate only the operation check applies: there is no
+	// package to resolve and no transport (the set writes none).
 	if err := c.checkSafety(op, opName); err != nil {
-		return err
+		return false, err
 	}
-	if len(c.config.Safety.AllowedPackages) > 0 {
-		return fmt.Errorf("%s is refused while allowed packages are set: a check variant belongs to no package", opName)
+	if len(c.config.Safety.AllowedPackages) == 0 {
+		return false, nil
 	}
-	return c.checkMutation(ctx, MutationContext{Op: op, OpName: opName})
+	if err := c.requireCIFeature(ctx); err != nil {
+		return false, err
+	}
+	if !versionAtLeast(c.fallbackVersion(ctx), "0.12.0") {
+		return false, errNoOwnVariants
+	}
+	return true, nil
+}
+
+func checkVariantWriteURL(name string, own bool) string {
+	if own {
+		return checkVariantURL(name) + "?own=X"
+	}
+	return checkVariantURL(name)
+}
+
+// fallbackVersion is the version of the installed adt-fallback set, or "".
+func (c *Client) fallbackVersion(ctx context.Context) string {
+	resp, err := c.transport.Request(ctx, FallbackRoot+"/info", &RequestOptions{
+		Method: http.MethodGet,
+		Accept: "text/plain",
+	})
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(resp.Body), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "version="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// versionAtLeast compares dotted numeric versions; one that does not parse
+// is older than any.
+func versionAtLeast(have, want string) bool {
+	h, w := strings.Split(have, "."), strings.Split(want, ".")
+	for i := range w {
+		wn, _ := strconv.Atoi(w[i])
+		if i >= len(h) {
+			return wn == 0
+		}
+		hn, err := strconv.Atoi(h[i])
+		if err != nil {
+			return false
+		}
+		if hn != wn {
+			return hn > wn
+		}
+	}
+	return true
 }
 
 // GetCheckVariant reads a global Code Inspector check variant.
@@ -117,7 +175,8 @@ func (c *Client) WriteCheckVariant(ctx context.Context, name, document string) (
 	if name == "" {
 		return nil, fmt.Errorf("check variant name is required")
 	}
-	if err := c.checkVariantWriteAllowed(ctx, OpUpdate, "WriteCheckVariant"); err != nil {
+	own, err := c.checkVariantWriteAllowed(ctx, OpUpdate, "WriteCheckVariant")
+	if err != nil {
 		return nil, err
 	}
 	parsed, err := ParseCheckVariant(name, document)
@@ -130,7 +189,7 @@ func (c *Client) WriteCheckVariant(ctx context.Context, name, document string) (
 	if err := c.requireCIFeature(ctx); err != nil {
 		return nil, err
 	}
-	resp, err := c.transport.Request(ctx, checkVariantURL(name), &RequestOptions{
+	resp, err := c.transport.Request(ctx, checkVariantWriteURL(name, own), &RequestOptions{
 		Method:      http.MethodPut,
 		Body:        []byte(document),
 		ContentType: checkVariantContentType,
@@ -148,13 +207,14 @@ func (c *Client) DeleteCheckVariant(ctx context.Context, name string) error {
 	if name == "" {
 		return fmt.Errorf("check variant name is required")
 	}
-	if err := c.checkVariantWriteAllowed(ctx, OpDelete, "DeleteCheckVariant"); err != nil {
+	own, err := c.checkVariantWriteAllowed(ctx, OpDelete, "DeleteCheckVariant")
+	if err != nil {
 		return err
 	}
 	if err := c.requireCIFeature(ctx); err != nil {
 		return err
 	}
-	_, err := c.transport.Request(ctx, checkVariantURL(name), &RequestOptions{
+	_, err = c.transport.Request(ctx, checkVariantWriteURL(name, own), &RequestOptions{
 		Method: http.MethodDelete,
 	})
 	return err
