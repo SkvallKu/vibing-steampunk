@@ -1226,6 +1226,8 @@ type ATCWorklist struct {
 	ObjectSetIsComplete bool           `json:"objectSetIsComplete"`
 	ObjectSets          []ATCObjectSet `json:"objectSets"`
 	Objects             []ATCObject    `json:"objects"`
+	// Infos of the run, such as a check variant the system replaced.
+	Infos []ATCRunInfo `json:"infos,omitempty"`
 }
 
 // ATCObjectSet represents an object set in the worklist.
@@ -1394,9 +1396,12 @@ func parseATCRunResult(data []byte) (*ATCRunResult, error) {
 	xmlStr := string(data)
 	xmlStr = strings.ReplaceAll(xmlStr, "atcworklist:", "")
 
+	// 7.50 sends the info as child elements (atcinfo:type, atcinfo:description).
 	type info struct {
-		Type        string `xml:"type,attr"`
-		Description string `xml:"description,attr"`
+		Type            string `xml:"type,attr"`
+		Description     string `xml:"description,attr"`
+		TypeElem        string `xml:"type"`
+		DescriptionElem string `xml:"description"`
 	}
 	type worklistRun struct {
 		WorklistID        string `xml:"worklistId"`
@@ -1417,10 +1422,14 @@ func parseATCRunResult(data []byte) (*ATCRunResult, error) {
 	}
 
 	for _, i := range resp.Infos.Items {
-		result.Infos = append(result.Infos, ATCRunInfo{
-			Type:        i.Type,
-			Description: i.Description,
-		})
+		info := ATCRunInfo{Type: i.Type, Description: i.Description}
+		if info.Type == "" {
+			info.Type = i.TypeElem
+		}
+		if info.Description == "" {
+			info.Description = i.DescriptionElem
+		}
+		result.Infos = append(result.Infos, info)
 	}
 
 	return result, nil
@@ -1562,7 +1571,16 @@ func parseATCWorklist(data []byte) (*ATCWorklist, error) {
 // RunATCCheck is a convenience method that runs ATC check on an object and returns findings.
 // It combines GetATCCheckVariant, CreateATCRun, and GetATCWorklist into a single call.
 // variant can be empty to use the system default.
+//
+// A system whose discovery has no /atc/worklists (7.40 SP06) knows only the
+// older protocol: one POST to /atc/runs that answers with the findings. It is
+// used there; everywhere else, and when discovery cannot be read, the run
+// goes through the worklist as before.
 func (c *Client) RunATCCheck(ctx context.Context, objectURL string, variant string, maxResults int) (*ATCWorklist, error) {
+	if present, known := c.advertises(ctx, "/sap/bc/adt/atc/worklists"); known && !present {
+		return c.runATCSinglePass(ctx, objectURL, variant, maxResults)
+	}
+
 	// Get worklist ID for the variant
 	worklistID, err := c.GetATCCheckVariant(ctx, variant)
 	if err != nil {
@@ -1579,6 +1597,144 @@ func (c *Client) RunATCCheck(ctx context.Context, objectURL string, variant stri
 	worklist, err := c.GetATCWorklist(ctx, runResult.WorklistID, false)
 	if err != nil {
 		return nil, fmt.Errorf("getting ATC worklist: %w", err)
+	}
+	// FINDING_STATS only counts the findings the worklist already has.
+	for _, info := range runResult.Infos {
+		if info.Type != "FINDING_STATS" {
+			worklist.Infos = append(worklist.Infos, info)
+		}
+	}
+
+	return worklist, nil
+}
+
+// runATCSinglePass runs ATC with the older one-step protocol. The variant goes
+// in the checkVariant attribute of the body: the system does not read the
+// query. An empty variant takes the system's own; one that does not exist is
+// replaced by DEFAULT, and the system says so in an info of the result.
+func (c *Client) runATCSinglePass(ctx context.Context, objectURL string, variant string, maxResults int) (*ATCWorklist, error) {
+	if maxResults <= 0 {
+		maxResults = 100
+	}
+	variantAttr := ""
+	if variant != "" {
+		var b strings.Builder
+		xml.EscapeText(&b, []byte(variant))
+		variantAttr = fmt.Sprintf(` checkVariant="%s"`, b.String())
+	}
+
+	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<atc:run maximumVerdicts="%d"%s xmlns:atc="http://www.sap.com/adt/atc">
+	<objectSets xmlns:adtcore="http://www.sap.com/adt/core">
+		<objectSet kind="inclusive">
+			<adtcore:objectReferences>
+				<adtcore:objectReference adtcore:uri="%s"/>
+			</adtcore:objectReferences>
+		</objectSet>
+	</objectSets>
+</atc:run>`, maxResults, variantAttr, objectURL)
+
+	resp, err := c.transport.Request(ctx, "/sap/bc/adt/atc/runs", &RequestOptions{
+		Method:      http.MethodPost,
+		Body:        []byte(body),
+		ContentType: "application/xml",
+		Accept:      "application/xml",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating ATC run: %w", err)
+	}
+
+	return parseATCResult(resp.Body)
+}
+
+// parseATCResult reads the one-step answer, <atc:result>, into the shape of a
+// worklist: one object per checked object, its verdicts as findings.
+func parseATCResult(data []byte) (*ATCWorklist, error) {
+	xmlStr := string(data)
+	xmlStr = strings.ReplaceAll(xmlStr, "atc:", "")
+	xmlStr = strings.ReplaceAll(xmlStr, "adtcore:", "")
+
+	type objectAttributes struct {
+		URI         string `xml:"uri,attr"`
+		Type        string `xml:"type,attr"`
+		Name        string `xml:"name,attr"`
+		PackageName string `xml:"packageName,attr"`
+		Author      string `xml:"author,attr"`
+	}
+	type verdict struct {
+		URI           string           `xml:"uri,attr"`
+		Priority      int              `xml:"priority,attr"`
+		CheckTitle    string           `xml:"checkTitle,attr"`
+		MessageTitle  string           `xml:"messageTitle,attr"`
+		ExemptionType string           `xml:"exemptionType,attr"`
+		Object        objectAttributes `xml:"objectAttributes"`
+	}
+	type info struct {
+		Type        string `xml:"type,attr"`
+		Description string `xml:"description,attr"`
+	}
+	type result struct {
+		URI      string `xml:"uri,attr"`
+		Verdicts struct {
+			Items []verdict `xml:"verdict"`
+		} `xml:"verdicts"`
+		Infos struct {
+			Items []info `xml:"info"`
+		} `xml:"infos"`
+	}
+
+	var resp result
+	if err := xml.Unmarshal([]byte(xmlStr), &resp); err != nil {
+		return nil, fmt.Errorf("parsing ATC result: %w", err)
+	}
+
+	id := resp.URI
+	if i := strings.LastIndex(id, "/"); i >= 0 {
+		id = id[i+1:]
+	}
+	worklist := &ATCWorklist{
+		ID:                  id,
+		ObjectSetIsComplete: true,
+		ObjectSets:          []ATCObjectSet{},
+		Objects:             []ATCObject{},
+	}
+
+	locationRegex := regexp.MustCompile(`#start=(\d+),(\d+)`)
+	index := map[string]int{}
+	for _, v := range resp.Verdicts.Items {
+		objURI := strings.SplitN(v.Object.URI, "#", 2)[0]
+		i, ok := index[objURI]
+		if !ok {
+			i = len(worklist.Objects)
+			index[objURI] = i
+			worklist.Objects = append(worklist.Objects, ATCObject{
+				URI:         objURI,
+				Type:        v.Object.Type,
+				Name:        v.Object.Name,
+				PackageName: v.Object.PackageName,
+				Author:      v.Object.Author,
+				Findings:    []ATCFinding{},
+			})
+		}
+		finding := ATCFinding{
+			URI:          v.URI,
+			Location:     v.Object.URI,
+			Priority:     v.Priority,
+			CheckTitle:   v.CheckTitle,
+			MessageTitle: v.MessageTitle,
+		}
+		if v.ExemptionType != "" && v.ExemptionType != "no" {
+			finding.ExemptionKind = v.ExemptionType
+		}
+		if m := locationRegex.FindStringSubmatch(v.Object.URI); m != nil {
+			finding.Line, _ = strconv.Atoi(m[1])
+			finding.Column, _ = strconv.Atoi(m[2])
+		}
+		worklist.Objects[i].Findings = append(worklist.Objects[i].Findings, finding)
+	}
+
+	for _, i := range resp.Infos.Items {
+		worklist.Infos = append(worklist.Infos, ATCRunInfo{Type: i.Type, Description: i.Description})
 	}
 
 	return worklist, nil

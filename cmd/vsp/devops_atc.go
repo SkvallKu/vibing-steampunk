@@ -74,6 +74,10 @@ func runATC(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	for _, info := range worklist.Infos {
+		fmt.Printf("Note: %s\n", info.Description)
+	}
+
 	if totalFindings == 0 {
 		fmt.Println("No findings.")
 	} else {

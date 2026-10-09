@@ -1,6 +1,12 @@
 package adt
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -226,5 +232,149 @@ func TestATCFindingPriorityMapping(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("priority %d: expected %s, got %s", tt.priority, tt.expected, got)
 		}
+	}
+}
+
+// The one-step answer of 7.40 SP06: verdicts inline, an info when the asked
+// variant does not exist.
+const atcSinglePassResult = `<?xml version="1.0" encoding="utf-8"?><atc:result verdicts="2" adtcore:uri="/sap/bc/adt/atc/runs/0050ABCDEF" xmlns:atc="http://www.sap.com/adt/atc" xmlns:adtcore="http://www.sap.com/adt/core"><verdicts>` +
+	`<verdict adtcore:uri="/sap/bc/adt/atc/runs/0050ABCDEF/verdicts/1" priority="3" checkTitle="Extended Program Check (SLIN)" messageTitle="Security check without license" exemptionType="no"><objectAttributes author="TESTUSER" adtcore:uri="/sap/bc/adt/oo/classes/zcl_demo_settings#start=1,0" adtcore:type="CLAS" adtcore:name="ZCL_DEMO_SETTINGS" adtcore:packageName="$ZDEMO"/><atom:link href="/sap/bc/adt/documentation/atc/documents/0050ABCDEF/verdict/1" rel="http://www.sap.com/adt/relations/documentation" type="text/html" xmlns:atom="http://www.w3.org/2005/Atom"/></verdict>` +
+	`<verdict adtcore:uri="/sap/bc/adt/atc/runs/0050ABCDEF/verdicts/2" priority="1" checkTitle="Critical Statements" messageTitle="EXEC SQL" exemptionType="db"><objectAttributes author="TESTUSER" adtcore:uri="/sap/bc/adt/oo/classes/zcl_demo_settings#start=42,4" adtcore:type="CLAS" adtcore:name="ZCL_DEMO_SETTINGS" adtcore:packageName="$ZDEMO"/></verdict>` +
+	`</verdicts><infos><info description="Check variant NOPE does not exist. The DEFAULT variant was used instead of it." type="info"/></infos></atc:result>`
+
+func TestParseATCResult(t *testing.T) {
+	wl, err := parseATCResult([]byte(atcSinglePassResult))
+	if err != nil {
+		t.Fatalf("parseATCResult: %v", err)
+	}
+	if wl.ID != "0050ABCDEF" {
+		t.Errorf("ID = %q", wl.ID)
+	}
+	if len(wl.Objects) != 1 {
+		t.Fatalf("want the verdicts of one object grouped, got %d objects", len(wl.Objects))
+	}
+	obj := wl.Objects[0]
+	if obj.URI != "/sap/bc/adt/oo/classes/zcl_demo_settings" || obj.Name != "ZCL_DEMO_SETTINGS" || obj.Type != "CLAS" || obj.PackageName != "$ZDEMO" {
+		t.Errorf("object = %+v", obj)
+	}
+	if len(obj.Findings) != 2 {
+		t.Fatalf("findings = %d", len(obj.Findings))
+	}
+	f := obj.Findings[1]
+	if f.Priority != 1 || f.CheckTitle != "Critical Statements" || f.MessageTitle != "EXEC SQL" || f.Line != 42 || f.Column != 4 || f.ExemptionKind != "db" {
+		t.Errorf("finding = %+v", f)
+	}
+	if obj.Findings[0].ExemptionKind != "" {
+		t.Errorf(`exemptionType "no" must leave ExemptionKind empty, got %q`, obj.Findings[0].ExemptionKind)
+	}
+	if len(wl.Infos) != 1 || !strings.Contains(wl.Infos[0].Description, "NOPE does not exist") {
+		t.Errorf("infos = %+v", wl.Infos)
+	}
+}
+
+func TestParseATCResultWithoutVerdicts(t *testing.T) {
+	wl, err := parseATCResult([]byte(`<?xml version="1.0" encoding="utf-8"?><atc:result verdicts="0" adtcore:uri="/sap/bc/adt/atc/runs/X1" xmlns:atc="http://www.sap.com/adt/atc" xmlns:adtcore="http://www.sap.com/adt/core"><verdicts/></atc:result>`))
+	if err != nil {
+		t.Fatalf("parseATCResult: %v", err)
+	}
+	if len(wl.Objects) != 0 || wl.Objects == nil {
+		t.Errorf("want an empty, non-nil object list, got %#v", wl.Objects)
+	}
+}
+
+// Without /atc/worklists in discovery the run is one POST to /atc/runs, the
+// variant in the body; with it, the worklist protocol is used as before.
+func TestRunATCCheckChoosesTheProtocolByDiscovery(t *testing.T) {
+	const withoutWorklists = `<app:service xmlns:app="http://www.w3.org/2007/app"><app:workspace>
+<app:collection href="/sap/bc/adt/atc/customizing"/><app:collection href="/sap/bc/adt/atc/runs"/>
+</app:workspace></app:service>`
+	const withWorklists = `<app:service xmlns:app="http://www.w3.org/2007/app"><app:workspace>
+<app:collection href="/sap/bc/adt/atc/runs"/><app:collection href="/sap/bc/adt/atc/worklists"/>
+</app:workspace></app:service>`
+
+	for _, tc := range []struct {
+		name, discovery string
+		discoveryStatus int
+		wantSinglePass  bool
+	}{
+		{"7.40 SP06, no worklists", withoutWorklists, http.StatusOK, true},
+		{"worklists advertised", withWorklists, http.StatusOK, false},
+		{"discovery unreadable", "", http.StatusInternalServerError, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var seen []string
+			var runBody, runQuery string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("x-csrf-token", "test-token")
+				if r.Method == http.MethodHead {
+					return
+				}
+				b, _ := io.ReadAll(r.Body)
+				mu.Lock()
+				seen = append(seen, r.Method+" "+r.URL.Path)
+				mu.Unlock()
+				switch {
+				case r.URL.Path == "/sap/bc/adt/discovery":
+					w.WriteHeader(tc.discoveryStatus)
+					w.Write([]byte(tc.discovery))
+				case r.URL.Path == "/sap/bc/adt/atc/runs" && r.URL.Query().Get("worklistId") == "":
+					mu.Lock()
+					runBody, runQuery = string(b), r.URL.RawQuery
+					mu.Unlock()
+					w.Write([]byte(atcSinglePassResult))
+				case r.URL.Path == "/sap/bc/adt/atc/worklists" && r.Method == http.MethodPost:
+					w.Write([]byte("WL1"))
+				case r.URL.Path == "/sap/bc/adt/atc/runs":
+					w.Write([]byte(`<atcworklist:worklistRun xmlns:atcworklist="http://www.sap.com/adt/atc/worklist"><atcworklist:worklistId>WL1</atcworklist:worklistId></atcworklist:worklistRun>`))
+				case r.URL.Path == "/sap/bc/adt/atc/worklists/WL1":
+					w.Write([]byte(`<atcworklist:worklist atcworklist:id="WL1" xmlns:atcworklist="http://www.sap.com/adt/atc/worklist"><atcworklist:objects/></atcworklist:worklist>`))
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer srv.Close()
+			c := NewClient(srv.URL, "user", "pass")
+
+			wl, err := c.RunATCCheck(context.Background(), "/sap/bc/adt/oo/classes/zcl_demo_settings", "SECURITY_CHECK_ALL", 50)
+			if err != nil {
+				t.Fatalf("RunATCCheck: %v (requests %v)", err, seen)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			usedWorklists := false
+			for _, s := range seen {
+				if strings.Contains(s, "/atc/worklists") {
+					usedWorklists = true
+				}
+			}
+			if tc.wantSinglePass {
+				if usedWorklists {
+					t.Errorf("one-step run must not touch worklists: %v", seen)
+				}
+				if !strings.Contains(runBody, `checkVariant="SECURITY_CHECK_ALL"`) || !strings.Contains(runBody, `maximumVerdicts="50"`) {
+					t.Errorf("variant and limit belong in the body: %s", runBody)
+				}
+				if strings.Contains(runQuery, "checkVariant") || strings.Contains(runQuery, "worklistId") {
+					t.Errorf("query = %q: the system does not read it", runQuery)
+				}
+				if len(wl.Objects) != 1 || len(wl.Infos) != 1 {
+					t.Errorf("result not carried over: %+v", wl)
+				}
+			} else if !usedWorklists {
+				t.Errorf("want the worklist protocol: %v", seen)
+			}
+		})
+	}
+}
+
+// 7.50 answers a worklist run with the info as child elements.
+func TestParseATCRunResultWithInfoElements(t *testing.T) {
+	result, err := parseATCRunResult([]byte(`<?xml version="1.0" encoding="utf-8"?><atcworklist:worklistRun xmlns:atcworklist="http://www.sap.com/adt/atc/worklist"><atcworklist:worklistId>WL2</atcworklist:worklistId><atcworklist:infos><atcinfo:info xmlns:atcinfo="http://www.sap.com/adt/atc/info"><atcinfo:type>FINDING_STATS</atcinfo:type><atcinfo:description>0,2,0</atcinfo:description></atcinfo:info></atcworklist:infos></atcworklist:worklistRun>`))
+	if err != nil {
+		t.Fatalf("parseATCRunResult: %v", err)
+	}
+	if len(result.Infos) != 1 || result.Infos[0].Type != "FINDING_STATS" || result.Infos[0].Description != "0,2,0" {
+		t.Errorf("infos = %+v", result.Infos)
 	}
 }
