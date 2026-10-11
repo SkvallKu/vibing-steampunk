@@ -21,3 +21,7 @@ path  **/package-lock.json            packed-private-ip  npm integrity hashes (b
 path  pkg/sapcompress/testdata/*.hex  packed-private-ip  Compressed random and synthetic test vectors for the LZC/LZH decoders; no capture in them.
 path  internal/mcp/server_http_test.go  private-ip       Bind-address test fixture: a sample LAN address checked to count as exposed, not a host of ours.
 match packed-private-ip  172\.17\.0\.[0-9]{1,3}       Docker's default bridge network. SAP GUIDs from the trial container carry its MAC 02:42:ac:11:00:xx in the node field; the same on every Docker host, it names no network of ours.
+path  FORK*.md                        private-ip         Sample system profile in the fork docs: the address is a placeholder application server behind a SAProuter, not a host of ours.
+path  cmd/vsp/server_system_test.go   private-ip         Profile test fixtures: the addresses are placeholder RFC hosts.
+path  cmd/vsp/server_system_test.go   config-password    Environment test fixtures: "devsecret" is a made-up password for the SAP_PASSWORD variables, not a credential.
+path  internal/mcp/handlers_rfc_profile_test.go  private-ip  RFC profile test fixture: the address is a placeholder RFC host.
