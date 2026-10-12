@@ -303,7 +303,7 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 			}
 		}
 		if err != nil {
-			return nil, fmt.Errorf("RFC tunnel: %w", err)
+			return nil, fmt.Errorf("RFC tunnel: %w", streamingHint(err))
 		}
 	}
 
@@ -321,6 +321,16 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(bytes.NewReader(res.Body)),
 		Request:    req,
 	}, nil
+}
+
+// streamingHint names the setting behind open-rfc-go's refusal of a request
+// past the compact CPIC limit, which says only that streaming is disabled
+// for the destination: a write or syntax check of a large source.
+func streamingHint(err error) error {
+	if !strings.Contains(err.Error(), "CPIC streaming is disabled") {
+		return err
+	}
+	return fmt.Errorf("%w (the request is larger than one RFC message takes; set \"rfc_cpic_streaming\": true for this system in .vsp.json to send it in parts)", err)
 }
 
 // afterTunnelError decides what a failed call does to the connection.

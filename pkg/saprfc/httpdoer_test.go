@@ -314,3 +314,20 @@ func TestTunnelDoesNotRetryARejectedLogon(t *testing.T) {
 		})
 	}
 }
+
+// open-rfc-go refuses a request past the compact CPIC limit saying only that
+// streaming is disabled; the answer names the setting that enables it.
+func TestTunnelNamesTheStreamingSetting(t *testing.T) {
+	ft := newFakeTunnel(fmt.Errorf("%w: appc: CPIC streaming is disabled; enable this destination before sending more than 28000 application bytes", rfc.ErrProtocol))
+	req, _ := http.NewRequest("PUT", "http://h/sap/bc/adt/x", strings.NewReader("big"))
+	req.Header.Set("X-sap-adt-sessiontype", "stateless")
+	_, err := ft.Do(req)
+	if err == nil || !strings.Contains(err.Error(), `"rfc_cpic_streaming": true`) || !errors.Is(err, rfc.ErrProtocol) {
+		t.Errorf("Do: err = %v, want the library's error naming rfc_cpic_streaming", err)
+	}
+
+	ft = newFakeTunnel(errors.New("some other failure"))
+	if _, err := ft.Do(req); err == nil || strings.Contains(err.Error(), "rfc_cpic_streaming") {
+		t.Errorf("Do: err = %v, want no streaming hint", err)
+	}
+}
