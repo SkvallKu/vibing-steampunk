@@ -59,7 +59,9 @@ func (s *Server) debugger(ctx context.Context) (*debugSession, error) {
 	}
 
 	user := s.config.Username
-	if c, err := s.dialRFC(ctx, nil); err == nil {
+	// The listener holds its call until a debuggee stops; the library's 30 s
+	// would end it first, and DebuggerListen waits 60 s by default.
+	if c, err := s.dialRFCWithTimeout(ctx, nil, debugCallTimeout); err == nil {
 		dbg, derr := saprfc.NewDebugger(ctx, c, user)
 		if derr == nil {
 			s.debugSess = &debugSession{dbg: dbg, conn: c, route: "rfc", user: user}

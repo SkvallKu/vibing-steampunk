@@ -42,6 +42,11 @@ import (
 // session that holds somebody's lock.
 type TunnelDoer struct {
 	dest Params
+	// timeout bounds one request, as http.Client.Timeout does over HTTP,
+	// unless the request carries a call deadline of its own (an activation,
+	// ABAP Unit, a call with params.timeout). Zero leaves a request bounded
+	// by its context only.
+	timeout time.Duration
 	// dial opens a line; tests replace it.
 	dial func(ctx context.Context, dest Params, pinned bool) (*tunnelLine, error)
 
@@ -80,16 +85,24 @@ type tunnelSlot struct {
 }
 
 // NewTunnelDoer returns an HTTPDoer that tunnels every request through
-// classic RFC to dest. Nothing is dialled until the first request.
-func NewTunnelDoer(dest Params) *TunnelDoer {
-	return &TunnelDoer{dest: dest, dial: dialTunnel}
+// classic RFC to dest, each bounded by timeout. Nothing is dialled until the
+// first request.
+func NewTunnelDoer(dest Params, timeout time.Duration) *TunnelDoer {
+	return &TunnelDoer{dest: dest, timeout: timeout, dial: dialTunnel}
 }
+
+// tunnelReadTimeout is how long a line waits for SAP to answer. While an ABAP
+// call runs the server sends nothing, so this caps the call as a whole; the
+// library's default of 30 s cut an activation or ATC run off while SAP went on
+// with it. It is only a backstop: the request's context — the doer's timeout
+// or the call's deadline — is what ends a call.
+const tunnelReadTimeout = time.Hour
 
 // dialTunnel logs on to dest. The pinned line has a client of its own, so
 // dropping the shared one never takes the pinned session with it; it costs a
 // second logon, made only when the first request into the context comes.
 func dialTunnel(ctx context.Context, dest Params, pinned bool) (*tunnelLine, error) {
-	c, err := Open(ctx, dest)
+	c, err := OpenWithTimeout(ctx, dest, tunnelReadTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +265,11 @@ func (d *TunnelDoer) Do(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	ctx := req.Context()
+	if d.timeout > 0 && !adt.CallDeadlineGoverns(ctx) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d.timeout)
+		defer cancel()
+	}
 	// Everything but an explicit stateless request belongs to the context,
 	// as it does in adt.Transport.do.
 	slot, pinned := &d.shared, false
@@ -373,6 +391,6 @@ func afterTunnelError(err error) (drop, retry bool) {
 // and response parsing all behave the same; only the wire underneath changes.
 func NewTunneledADTClient(baseURL, user, password string, dest Params, opts ...adt.Option) *adt.Client {
 	cfg := adt.NewConfig(baseURL, user, password, opts...)
-	transport := adt.NewTransportWithClient(cfg, NewTunnelDoer(dest))
+	transport := adt.NewTransportWithClient(cfg, NewTunnelDoer(dest, cfg.Timeout))
 	return adt.NewClientWithTransport(cfg, transport)
 }

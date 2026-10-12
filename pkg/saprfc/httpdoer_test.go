@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/oisee/open-rfc-go/rfc"
+	"github.com/oisee/vibing-steampunk/pkg/adt"
 )
 
 func TestAfterTunnelError(t *testing.T) {
@@ -95,7 +96,7 @@ func TestTunnelRefusesAnotherLanguage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		d := NewTunnelDoer(Params{Language: c.logon})
+		d := NewTunnelDoer(Params{Language: c.logon}, 0)
 		err = d.checkLanguage(req.URL)
 		if (err != nil) != c.refused {
 			t.Errorf("logon %s, %s: err = %v, refused %v", c.logon, c.url, err, c.refused)
@@ -341,8 +342,91 @@ func TestTunnelNamesTheStreamingSetting(t *testing.T) {
 // language than the logon's.
 func TestTunnelNamesAnUnknownLanguage(t *testing.T) {
 	req, _ := http.NewRequest("GET", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=EO", nil)
-	err := NewTunnelDoer(Params{Language: "E"}).checkLanguage(req.URL)
+	err := NewTunnelDoer(Params{Language: "E"}, 0).checkLanguage(req.URL)
 	if err == nil || !strings.Contains(err.Error(), "no SAP language key") {
 		t.Errorf("err = %v, want the unknown-code refusal", err)
+	}
+}
+
+// deadlineCaller notes the deadline of each call it gets.
+type deadlineCaller struct {
+	deadline time.Time
+	ok       bool
+}
+
+func (c *deadlineCaller) Call(ctx context.Context, _ string, _ rfc.Params) (rfc.Result, error) {
+	c.deadline, c.ok = ctx.Deadline()
+	return rfc.Result{}, errors.New("fake answer")
+}
+
+// Over HTTP a request is bounded by the client's Timeout, or by the call's
+// deadline when it carries one; the tunnel bounds it the same way. Before, it
+// had only the library's 30 s per read, which cut an activation or ATC run off
+// while SAP went on with it.
+func TestTunnelBoundsARequestLikeHTTP(t *testing.T) {
+	caller := &deadlineCaller{}
+	d := NewTunnelDoer(Params{}, 90*time.Second)
+	d.dial = func(context.Context, Params, bool) (*tunnelLine, error) {
+		return &tunnelLine{caller: caller, close: func(context.Context) error { return nil }}, nil
+	}
+	send := func(ctx context.Context) {
+		req, _ := http.NewRequestWithContext(ctx, "GET", "http://h/sap/bc/adt/x", nil)
+		req.Header.Set("X-sap-adt-sessiontype", "stateless")
+		_, _ = d.Do(req)
+	}
+
+	send(context.Background())
+	if left := time.Until(caller.deadline); !caller.ok || left > 90*time.Second || left < 80*time.Second {
+		t.Errorf("plain request: deadline in %v (set %v), want the doer's 90s", left, caller.ok)
+	}
+
+	// A call deadline longer than the doer's timeout governs alone.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	send(adt.WithCallDeadline(ctx))
+	if left := time.Until(caller.deadline); !caller.ok || left < 9*time.Minute {
+		t.Errorf("call with a deadline: deadline in %v (set %v), want the call's 10m", left, caller.ok)
+	}
+
+	// An unmarked deadline is not a call budget: the doer's timeout still applies.
+	send(ctx)
+	if left := time.Until(caller.deadline); left > 90*time.Second {
+		t.Errorf("unmarked deadline: deadline in %v, want the doer's 90s", left)
+	}
+}
+
+// The line itself must not end a call before the request's context does.
+func TestTunnelLineOutlastsTheLibraryDefault(t *testing.T) {
+	old := dialRFC
+	t.Cleanup(func() { dialRFC = old })
+	var got time.Duration
+	dialRFC = func(_ context.Context, _ Params, timeout time.Duration) (*rfc.Client, error) {
+		got = timeout
+		return nil, errors.New("no gateway")
+	}
+	for _, pinned := range []bool{false, true} {
+		got = 0
+		_, _ = dialTunnel(context.Background(), Params{}, pinned)
+		if got < 10*time.Minute {
+			t.Errorf("pinned=%v: line opened with a %v read timeout, want one that outlasts a long call", pinned, got)
+		}
+	}
+}
+
+// The ADT client's own timeout is what the tunnel bounds a request by.
+func TestTunneledClientTakesItsTimeout(t *testing.T) {
+	old := dialRFC
+	t.Cleanup(func() { dialRFC = old })
+	var left time.Duration
+	dialRFC = func(ctx context.Context, _ Params, _ time.Duration) (*rfc.Client, error) {
+		if dl, ok := ctx.Deadline(); ok {
+			left = time.Until(dl)
+		}
+		return nil, errors.New("no gateway")
+	}
+	c := NewTunneledADTClient("http://h:8000", "u", "p", Params{}, adt.WithTimeout(90*time.Second))
+	_, _ = c.SearchObject(context.Background(), "X", 1)
+	if left > 90*time.Second || left < 80*time.Second {
+		t.Errorf("logon under a deadline in %v, want the client's 90s", left)
 	}
 }

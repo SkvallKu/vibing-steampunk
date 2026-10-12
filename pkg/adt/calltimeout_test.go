@@ -44,7 +44,7 @@ func TestCallDeadlineLiftsClientTimeout(t *testing.T) {
 }
 
 func TestWithCallDeadlineNeedsADeadline(t *testing.T) {
-	if callDeadlineGoverns(WithCallDeadline(context.Background())) {
+	if CallDeadlineGoverns(WithCallDeadline(context.Background())) {
 		t.Fatal("a context without a deadline must stay bounded by the client Timeout")
 	}
 }
@@ -56,15 +56,15 @@ func TestCallDeadlineNeedsTheDeadlineStillPresent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	marked := WithCallDeadline(ctx)
-	if !callDeadlineGoverns(marked) {
+	if !CallDeadlineGoverns(marked) {
 		t.Fatal("a marked context with a deadline must govern")
 	}
-	if callDeadlineGoverns(context.WithoutCancel(marked)) {
+	if CallDeadlineGoverns(context.WithoutCancel(marked)) {
 		t.Fatal("a detached context keeps the mark but has no deadline: the client Timeout must apply")
 	}
 	rebounded, cancel2 := context.WithTimeout(context.WithoutCancel(marked), time.Minute)
 	defer cancel2()
-	if !callDeadlineGoverns(rebounded) {
+	if !CallDeadlineGoverns(rebounded) {
 		t.Fatal("a detached context given a deadline of its own governs again")
 	}
 }

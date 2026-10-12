@@ -1411,7 +1411,7 @@ func (t *Transport) do(req *http.Request) (*http.Response, error) {
 		}
 		isolated := *client
 		isolated.Jar = nil
-		if callDeadlineGoverns(req.Context()) {
+		if CallDeadlineGoverns(req.Context()) {
 			isolated.Timeout = 0
 		}
 		return isolated.Do(req)

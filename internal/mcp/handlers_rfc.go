@@ -311,16 +311,25 @@ func (s *Server) dropSharedRFC(ctx context.Context) {
 // dialRFC resolves the destination for this server's system, honouring per-call
 // overrides and the RFC settings of this server's .vsp.json system.
 func (s *Server) dialRFC(ctx context.Context, params map[string]any) (*openrfc.Client, error) {
+	return s.dialRFCWithTimeout(ctx, params, 0)
+}
+
+// dialRFCWithTimeout is dialRFC for a client whose calls may take up to
+// timeout (zero keeps the library's 30 s).
+func (s *Server) dialRFCWithTimeout(ctx context.Context, params map[string]any, timeout time.Duration) (*openrfc.Client, error) {
 	dest, err := s.rfcDestination(params)
 	if err != nil {
 		return nil, err
 	}
-	c, err := saprfc.Open(ctx, dest)
+	c, err := rfcOpen(ctx, dest, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("RFC logon to %s:%d failed: %w", dest.Host, dest.Port, err)
 	}
 	return c, nil
 }
+
+// rfcOpen logs on; tests replace it.
+var rfcOpen = saprfc.OpenWithTimeout
 
 // systemRFCInput is the destination of a server started with -s. Host and RFC
 // logon come from that system only; the RFC logon falls back to the server's

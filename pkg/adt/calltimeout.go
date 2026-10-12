@@ -23,12 +23,12 @@ func WithCallDeadline(ctx context.Context) context.Context {
 	return context.WithValue(ctx, callDeadlineKey{}, true)
 }
 
-// callDeadlineGoverns reports whether ctx was marked by WithCallDeadline and
+// CallDeadlineGoverns reports whether ctx was marked by WithCallDeadline and
 // still has a deadline. The mark is a value, so it survives
 // context.WithoutCancel, which drops the deadline: a context detached that way
 // must fall back to the client's per-request Timeout, or a request under it
 // could hang without bound.
-func callDeadlineGoverns(ctx context.Context) bool {
+func CallDeadlineGoverns(ctx context.Context) bool {
 	if _, ok := ctx.Deadline(); !ok {
 		return false
 	}
@@ -40,7 +40,7 @@ func callDeadlineGoverns(ctx context.Context) bool {
 // call deadline, the client's own Timeout is lifted for this request and the
 // deadline alone ends it.
 func (t *Transport) send(req *http.Request) (*http.Response, error) {
-	if client, ok := t.httpClient.(*http.Client); ok && client.Timeout > 0 && callDeadlineGoverns(req.Context()) {
+	if client, ok := t.httpClient.(*http.Client); ok && client.Timeout > 0 && CallDeadlineGoverns(req.Context()) {
 		unbounded := *client
 		unbounded.Timeout = 0
 		return unbounded.Do(req)
