@@ -10,13 +10,11 @@ import (
 // and the caller keeps its usual way; it is asked again next time. The
 // document is the one FallbackPath reads, so it is read once for both.
 func (c *Client) advertises(ctx context.Context, href string) (present, known bool) {
-	r := &c.fallback
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.loaded && !r.load(ctx, c) {
+	hrefs, _, ok := c.fallback.routes(ctx, c)
+	if !ok {
 		return false, false
 	}
-	return r.hrefs[strings.ToLower(href)], true
+	return hrefs[strings.ToLower(href)], true
 }
 
 // parseDiscoveryHrefs collects every href of the discovery document, in lower

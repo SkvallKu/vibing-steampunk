@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const discoveryWithStandIn = `<app:service xmlns:app="http://www.w3.org/2007/app">
@@ -388,5 +389,92 @@ func TestAdvertisesSharesTheDiscoveryOfTheStandIns(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("discovery read %d times, want once", calls)
+	}
+}
+
+// On 7.40 SP06 nothing but discovery answers, the data preview for free SQL
+// included. With an identity pin the first request of a client is preceded
+// by the preflight, and when that first request is the discovery read for
+// the stand-ins, the preflight's own router 404 must not ask for the
+// stand-ins again: it used to wait for the lock its caller held, for ever.
+func TestPinnedFirstDiscoveryReadDoesNotHang(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(c *Client, ctx context.Context)
+	}{
+		{"FallbackPath", func(c *Client, ctx context.Context) { c.FallbackPath(ctx, "/sap/bc/adt/textelements/programs/a") }},
+		{"FallbackInstalled", func(c *Client, ctx context.Context) { c.FallbackInstalled(ctx) }},
+		{"advertises", func(c *Client, ctx context.Context) { c.advertises(ctx, "/sap/bc/adt/atc/worklists") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("x-csrf-token", "test-token")
+				if r.URL.Path == "/sap/bc/adt/discovery" {
+					w.Write([]byte(discoveryWithStandIn))
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("No application class found for URI: " + r.URL.Path))
+			}))
+			defer srv.Close()
+			c := NewClient(srv.URL, "DEVELOPER", "secret", WithClient("001"), WithExpect(mustPin(t, "A4H.001/DEVELOPER")))
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				tc.call(c, context.Background())
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("no answer in 5s: the preflight waits for the stand-in routes it is part of reading")
+			}
+		})
+	}
+}
+
+// The discovery read is made without the lock held, and callers that come
+// during it still wait for that one read rather than each making their own.
+func TestConcurrentCallersShareOneDiscoveryRead(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if r.URL.Path == "/sap/bc/adt/discovery" {
+			mu.Lock()
+			calls++
+			mu.Unlock()
+			<-release
+			w.Write([]byte(discoveryWithStandIn))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	var wg sync.WaitGroup
+	got := make([]string, 8)
+	for i := range got {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			got[i] = c.FallbackPath(context.Background(), "/sap/bc/adt/textelements/programs/a")
+		}(i)
+	}
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Errorf("discovery read %d times, want once", calls)
+	}
+	for i, p := range got {
+		if p != "/sap/bc/adt/zvsp/textelements/programs/a" {
+			t.Errorf("caller %d got %q, want the stand-in", i, p)
+		}
 	}
 }

@@ -26,6 +26,10 @@ const adtRoot = "/sap/bc/adt"
 type fallbackRoutes struct {
 	mu     sync.Mutex
 	loaded bool
+	// reading is closed when the discovery read in progress ends; nil when
+	// none is. The read is made without mu held: its request may be preceded
+	// by the identity preflight, whose own requests come back here.
+	reading chan struct{}
 	// Collection and template hrefs of the discovery document.
 	hrefs map[string]bool
 	// Standard paths the stand-ins cover, lower case: /sap/bc/adt/textelements/programs.
@@ -40,25 +44,21 @@ func (c *Client) FallbackPath(ctx context.Context, path string) string {
 	if !strings.HasPrefix(strings.ToLower(path), adtRoot+"/") || strings.HasPrefix(strings.ToLower(path), FallbackRoot+"/") {
 		return path
 	}
-	r := &c.fallback
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.loaded {
-		if !r.load(ctx, c) {
-			return path
-		}
+	hrefs, covered, ok := c.fallback.routes(ctx, c)
+	if !ok {
+		return path
 	}
 	lower := strings.ToLower(strings.SplitN(path, "?", 2)[0])
-	for _, std := range r.covered {
+	for _, std := range covered {
 		if !underPath(lower, std) {
 			continue
 		}
-		if r.hrefs[std] {
+		if hrefs[std] {
 			return path
 		}
 		// A standard resource more specific than the stand-in stays where it
 		// is: 7.50 has /sap/bc/adt/packages/settings, not /packages.
-		for href := range r.hrefs {
+		for href := range hrefs {
 			if len(href) > len(std) && !strings.HasPrefix(href, FallbackRoot+"/") && underPath(lower, href) {
 				return path
 			}
@@ -95,26 +95,61 @@ func (c *Client) FallbackPathIfKnown(ctx context.Context, path string) string {
 // FallbackInstalled tells whether discovery shows the adt-fallback set
 // (its /info), whatever it covers. False also when discovery cannot be read.
 func (c *Client) FallbackInstalled(ctx context.Context) bool {
-	r := &c.fallback
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.loaded && !r.load(ctx, c) {
-		return false
-	}
-	return r.hrefs[FallbackRoot+"/info"]
+	hrefs, _, ok := c.fallback.routes(ctx, c)
+	return ok && hrefs[FallbackRoot+"/info"]
 }
 
-func (r *fallbackRoutes) load(ctx context.Context, c *Client) bool {
-	res, err := c.transport.Request(ctx, "/sap/bc/adt/discovery", &RequestOptions{
-		Method: http.MethodGet,
-		Accept: acceptAny,
-	})
-	if err != nil || res == nil {
-		return false
+// fallbackReadKey marks the context of the discovery read. A request made
+// under it — the identity preflight that may precede the read, whose probes
+// get a router 404 on 7.40 SP06 — finds no routes instead of waiting for the
+// read it is part of.
+type fallbackReadKey struct{}
+
+// routes returns the hrefs of the discovery document and the standard paths
+// the stand-ins cover, reading the document the first time. Callers that
+// come while it is read wait for that read; ok is false when it fails, and
+// the next caller reads again. The maps are never changed once stored.
+func (r *fallbackRoutes) routes(ctx context.Context, c *Client) (hrefs map[string]bool, covered []string, ok bool) {
+	if ctx.Value(fallbackReadKey{}) != nil {
+		return nil, nil, false
 	}
-	r.hrefs, r.covered = parseFallbackDiscovery(string(res.Body))
-	r.loaded = true
-	return true
+	for {
+		r.mu.Lock()
+		if r.loaded {
+			hrefs, covered = r.hrefs, r.covered
+			r.mu.Unlock()
+			return hrefs, covered, true
+		}
+		if wait := r.reading; wait != nil {
+			r.mu.Unlock()
+			select {
+			case <-wait:
+				continue
+			case <-ctx.Done():
+				return nil, nil, false
+			}
+		}
+		done := make(chan struct{})
+		r.reading = done
+		r.mu.Unlock()
+
+		res, err := c.transport.Request(context.WithValue(ctx, fallbackReadKey{}, r), "/sap/bc/adt/discovery", &RequestOptions{
+			Method: http.MethodGet,
+			Accept: acceptAny,
+		})
+		if err == nil && res != nil {
+			hrefs, covered = parseFallbackDiscovery(string(res.Body))
+		}
+
+		r.mu.Lock()
+		if hrefs != nil {
+			r.hrefs, r.covered, r.loaded = hrefs, covered, true
+		}
+		r.reading = nil
+		close(done)
+		r.mu.Unlock()
+		return hrefs, covered, hrefs != nil
+	}
 }
 
 // parseFallbackDiscovery collects every href of the discovery document and,
