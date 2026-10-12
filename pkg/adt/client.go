@@ -24,6 +24,9 @@ type Client struct {
 	// Collections the discovery document lists, read once. See discovery_hrefs.go.
 	discovery discoveryHrefs
 
+	// What the data preview of this system turned out not to take. See query_sql.go.
+	preview dataPreviewMemory
+
 	// rfcFetcherFactory, when non-nil, overrides the default WebSocket-backed
 	// RFC source fetcher used by GetEnhancement's fallback path. Production
 	// callers leave this nil; tests inject a stub to avoid opening a real

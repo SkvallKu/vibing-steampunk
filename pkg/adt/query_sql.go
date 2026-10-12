@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 )
 
 // The data preview (datapreview/freestyle) takes ABAP SQL, not ANSI SQL, and
@@ -421,6 +422,15 @@ func (c *Client) GetTableContents(ctx context.Context, tableName string, maxRows
 		sqlFilter = normalizeDataPreviewSQL(sqlFilter)
 		opts.Body = []byte(sqlFilter)
 		opts.ContentType = "text/plain"
+		// Known to be the classic parser: its syntax at once.
+		if legacy, ok := legacyDataPreviewSQL(sqlFilter); ok && c.preview.classicParser.Load() {
+			resp, err := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", withBody(opts, legacy))
+			if err != nil {
+				return nil, fmt.Errorf("getting table contents: %w", err)
+			}
+			res, perr := parseTableContents(resp.Body)
+			return noteRowFallback(res, maxRows), perr
+		}
 	}
 
 	resp, err := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts)
@@ -428,9 +438,9 @@ func (c *Client) GetTableContents(ctx context.Context, tableName string, maxRows
 		// The classic parser (7.40 SP06 and older) rejects what the new one
 		// takes; say it once more in its syntax. See datapreview_legacy.go.
 		if legacy, ok := legacyDataPreviewSQL(sqlFilter); ok && isBadRequest(err) {
-			opts.Body = []byte(legacy)
-			resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", opts)
+			resp2, err2 := c.transport.Request(ctx, "/sap/bc/adt/datapreview/ddic", withBody(opts, legacy))
 			if err2 == nil {
+				c.preview.classicParser.Store(true)
 				res, perr := parseTableContents(resp2.Body)
 				return noteRowFallback(res, maxRows), perr
 			}
@@ -475,6 +485,25 @@ func (c *Client) RunQuery(ctx context.Context, sqlQuery string, maxRows int) (*T
 	return res, nil
 }
 
+// dataPreviewMemory is what a client has learned about the data preview of
+// its system, so that it stops paying for it on every query. Before 7.40 SP08
+// there is no freestyle resource and the classic parser refuses the commas
+// between columns: a SELECT through RunQuery was a 404, a 400 and the query
+// again, three requests where one does, for every chunk of a where-used read
+// from the cross-reference tables. Each data preview request generates a
+// subroutine pool, and a session holds a few dozen (afterTunnelError).
+type dataPreviewMemory struct {
+	noFreestyle   atomic.Bool
+	classicParser atomic.Bool
+}
+
+// withBody is opts with another request body.
+func withBody(opts *RequestOptions, body string) *RequestOptions {
+	o := *opts
+	o.Body = []byte(body)
+	return &o
+}
+
 // runQueryRaw sends a statement to the data preview as it is.
 func (c *Client) runQueryRaw(ctx context.Context, sqlQuery string, maxRows int) (*TableContentsResult, error) {
 	if sqlQuery == "" {
@@ -484,33 +513,41 @@ func (c *Client) runQueryRaw(ctx context.Context, sqlQuery string, maxRows int) 
 		maxRows = 100
 	}
 
-	params := url.Values{}
-	params.Set("rowNumber", fmt.Sprintf("%d", maxRows))
-
-	resp, err := c.transport.Request(ctx, "/sap/bc/adt/datapreview/freestyle", &RequestOptions{
-		Method:      http.MethodPost,
-		Query:       params,
-		Accept:      "application/*",
-		Body:        []byte(wrapSQL(sqlQuery)),
-		ContentType: "text/plain",
-	})
-	if err != nil {
-		// Releases before 7.40 SP08 have no freestyle endpoint. A query on
-		// one table is something /datapreview/ddic can answer.
-		if isNotFound(err) {
-			if table := singleTableOf(sqlQuery); table != "" {
-				res, ferr := c.GetTableContents(ctx, table, maxRows, sqlQuery)
-				if ferr == nil {
-					return res, nil
-				}
-				return nil, fmt.Errorf("running query: no freestyle SQL on this system, and data preview of %s failed: %w", table, ferr)
-			}
-			return nil, fmt.Errorf("running query: no freestyle SQL on this system (older than 7.40 SP08?); only a SELECT on a single table can be answered, through GetTableContents: %w", err)
+	missing := errors.New("the system has no /sap/bc/adt/datapreview/freestyle (found earlier)")
+	if !c.preview.noFreestyle.Load() {
+		params := url.Values{}
+		params.Set("rowNumber", fmt.Sprintf("%d", maxRows))
+		resp, err := c.transport.Request(ctx, "/sap/bc/adt/datapreview/freestyle", &RequestOptions{
+			Method:      http.MethodPost,
+			Query:       params,
+			Accept:      "application/*",
+			Body:        []byte(wrapSQL(sqlQuery)),
+			ContentType: "text/plain",
+		})
+		if err == nil {
+			return parseTableContents(resp.Body)
 		}
-		return nil, fmt.Errorf("running query: %w", err)
+		if !isNotFound(err) {
+			return nil, fmt.Errorf("running query: %w", err)
+		}
+		// Remembered only when the router says the resource is not there,
+		// not for an exception document about something in the query.
+		if IsRouterNotFound(err) {
+			c.preview.noFreestyle.Store(true)
+		}
+		missing = err
 	}
 
-	return parseTableContents(resp.Body)
+	// Releases before 7.40 SP08 have no freestyle endpoint. A query on
+	// one table is something /datapreview/ddic can answer.
+	if table := singleTableOf(sqlQuery); table != "" {
+		res, ferr := c.GetTableContents(ctx, table, maxRows, sqlQuery)
+		if ferr == nil {
+			return res, nil
+		}
+		return nil, fmt.Errorf("running query: no freestyle SQL on this system, and data preview of %s failed: %w", table, ferr)
+	}
+	return nil, fmt.Errorf("running query: no freestyle SQL on this system (older than 7.40 SP08?); only a SELECT on a single table can be answered, through GetTableContents: %w", missing)
 }
 
 // wrapSQL keeps every line of a statement under the data preview's limit.
