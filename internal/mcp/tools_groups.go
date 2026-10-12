@@ -32,7 +32,7 @@ func toolGroups() map[string][]string {
 			"GctsDeleteRepository", "GctsCloneRepository", "GctsPull",
 			"GctsCommit", "GctsListBranches", "GctsSwitchBranch", "GctsGetHistory",
 		},
-		"R": { // Report execution tools (via ZADT_VSP WebSocket)
+		"R": { // Reports: run and variants via the ZADT_VSP WebSocket, text elements via ADT
 			"RunReport", "GetVariants", "GetTextElements", "SetTextElements",
 		},
 		"I": { // Install/Setup tools

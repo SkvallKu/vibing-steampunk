@@ -10,7 +10,10 @@
 исправления для старых релизов (7.40, 7.50), на которых чтение в апстриме падает.
 
 Ветка `patched` — это `main` апстрима плюс коммиты ниже; при каждой синхронизации
-она ребейзится (последняя — на v2.60.0). Теги `vX.Y.Z-patch.N` показывают, на каком релизе апстрима основана сборка.
+она ребейзится (последняя — на v2.60.0). Ветка `adt-fallback` — это `patched` плюс
+ABAP-набор, подменяющий ресурсы ADT, которых нет на 7.40 и 7.50, и команды для его
+установки и работы с ним; релизные сборки начиная с `v2.60.0-patch.1` делаются из неё.
+Теги `vX.Y.Z-patch.N` показывают, на каком релизе апстрима основана сборка.
 
 ## Патчи
 
@@ -71,7 +74,7 @@
 
 ## Настройка
 
-Приоритет маршрута: `--saprouter` > `rfc_saprouter` в `.vsp.json` >
+Приоритет маршрута: `--saprouter` (только у `vsp rfc …`) > `rfc_saprouter` в `.vsp.json` >
 `VSP_<SYS>_RFC_SAPROUTER` > `SAP_SAPROUTER`.
 
 ```jsonc
@@ -137,10 +140,13 @@ vsp -s prod source CLAS ZCL_SOMETHING
 из релиза или собирайте из клона:
 
 ```sh
-git clone -b patched https://github.com/SkvallKu/vibing-steampunk
+git clone -b adt-fallback https://github.com/SkvallKu/vibing-steampunk
 cd vibing-steampunk
 CGO_ENABLED=0 go build -o build/vsp ./cmd/vsp
 ```
+
+Это релизная сборка. `-b patched` даёт то же без набора adt-fallback: без
+`vsp install adt-fallback`, `vsp cua` и `vsp atc variant|runs`.
 
 Чтобы работать с обоими репо одновременно, склонируйте их рядом и создайте `go.work`
 в родительской папке (не коммитьте его):
@@ -153,7 +159,8 @@ go work init ./vibing-steampunk ./open-rfc-go
 
 - ADT поверх RFC — stateless на каждый вызов; активация через туннель ограничена
   самим SAP, а не патчем.
-- `vsp compat` по-прежнему опрашивает HTTP-порты напрямую и зависает на RFC-only системах.
+- `vsp compat` опрашивает RFC-only систему через туннель, но в таблице маршрутов
+  по-прежнему называет `adt-http` то, что идёт через туннель.
 - На 7.40 data preview не сообщает длину колонки и никогда не помечает ключевые поля,
   поэтому `GetTableContents` показывает там `Length: 0` и `IsKey: false`. Так отвечает
   SAP; сами данные верные.
@@ -169,11 +176,18 @@ go work init ./vibing-steampunk ./open-rfc-go
 
 ## Синхронизация с апстримом
 
+Между синхронизациями исправление идёт в `patched` и вливается в `adt-fallback`.
+Синхронизация ребейзит обе: `patched` — на апстрим, затем собственные коммиты набора —
+на новый `patched` (слияния `patched` выпадают, их коммиты в нём уже есть).
+
 ```sh
 git fetch upstream
+old=$(git rev-parse patched)
 git rebase upstream/main patched
+git rebase --onto patched "$old" adt-fallback
 go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/graph/... ./pkg/config/... ./internal/mcp/...
-git tag vX.Y.Z-patch.N && git push --force-with-lease origin patched --tags
+git tag vX.Y.Z-patch.N adt-fallback
+git push --force-with-lease origin patched adt-fallback && git push origin vX.Y.Z-patch.N
 ```
 
 Патчи, принятые в апстрим, выпадают из `patched` при следующем ребейзе.

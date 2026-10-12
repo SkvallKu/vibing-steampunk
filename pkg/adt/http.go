@@ -1103,11 +1103,12 @@ func (t *Transport) Ping(ctx context.Context) error {
 // CheckSession reports whether this client has a usable, authenticated ADT
 // session, and returns why not when it does not.
 //
-// It is the CSRF token fetch, deliberately, rather than a status code or a
-// query: a live ADT session always yields a token, and an expired SSO session
-// answers 200 with a logon page that carries none. The whole of that detection
-// already lives in fetchCSRFToken, and a second implementation beside it would
-// be a second thing to keep right.
+// Over HTTP it is the CSRF token fetch, deliberately, rather than a status
+// code or a query: a live ADT session always yields a token, and an expired
+// SSO session answers 200 with a logon page that carries none. The whole of
+// that detection already lives in fetchCSRFToken, and a second implementation
+// beside it would be a second thing to keep right. A channel with no CSRF
+// concept (the RFC tunnel) reads the discovery document instead (Ping).
 func (c *Client) CheckSession(ctx context.Context) error {
 	return c.transport.Ping(ctx)
 }

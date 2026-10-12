@@ -8,7 +8,10 @@ SAProuter** — no ADT/HTTPS port, no SAP NW RFC SDK, no pyrfc. It also carries
 fixes for older releases (7.40, 7.50) where upstream's reads fail.
 
 The branch `patched` is upstream `main` plus the commits listed below, rebased on
-each upstream sync (last: v2.60.0). Tags `vX.Y.Z-patch.N` mark the upstream release a build is based on.
+each upstream sync (last: v2.60.0). The branch `adt-fallback` is `patched` plus an
+ABAP set that stands in for ADT resources 7.40 and 7.50 lack, and the commands
+that install and use it; release builds from `v2.60.0-patch.1` on come from it.
+Tags `vX.Y.Z-patch.N` mark the upstream release a build is based on.
 
 ## Patches
 
@@ -69,7 +72,7 @@ on its own, so upstream can take any of them separately.
 
 ## Configuration
 
-Route precedence: `--saprouter` > `rfc_saprouter` in `.vsp.json` >
+Route precedence: `--saprouter` (on `vsp rfc …` only) > `rfc_saprouter` in `.vsp.json` >
 `VSP_<SYS>_RFC_SAPROUTER` > `SAP_SAPROUTER`.
 
 ```jsonc
@@ -135,10 +138,13 @@ The fork depends on the `open-rfc-go` fork through a `replace` in `go.mod`, so
 binary or build from a clone:
 
 ```sh
-git clone -b patched https://github.com/SkvallKu/vibing-steampunk
+git clone -b adt-fallback https://github.com/SkvallKu/vibing-steampunk
 cd vibing-steampunk
 CGO_ENABLED=0 go build -o build/vsp ./cmd/vsp
 ```
+
+That is the release build. `-b patched` builds the same without the adt-fallback
+set: no `vsp install adt-fallback`, `vsp cua` or `vsp atc variant|runs`.
 
 To work on both repositories at once, clone them side by side and add a `go.work`
 in the parent directory (do not commit it):
@@ -151,7 +157,8 @@ go work init ./vibing-steampunk ./open-rfc-go
 
 - ADT over RFC is stateless per call; activation over the tunnel is limited by SAP
   itself, not by the patch.
-- `vsp compat` still probes HTTP ports directly and hangs on RFC-only systems.
+- `vsp compat` probes an RFC-only system through the tunnel, but its routing table
+  still names `adt-http` for what goes through it.
 - On 7.40 the data preview reports no column length and never marks a key column,
   so `GetTableContents` shows `Length: 0` and `IsKey: false` there. That is what SAP
   sends; the data is right.
@@ -161,17 +168,24 @@ go work init ./vibing-steampunk ./open-rfc-go
 - `RunReport`, `RunReportAsync`, `GetVariants`, `CallRFC` (the MCP tool; `vsp rfc call`
   works) and the AMDP debugger still need the ZADT_VSP WebSocket, which cannot be
   reached through a SAProuter.
-- Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: a declaration of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller is named with its method from TMDIR, and what it uses of the target is in `target_component`; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
+- Callers read from the cross-reference tables (7.40, and the 7.50 500 above) are coarser than SE84: declaring a variable of a type counts as a use; a call of an inherited method counts for the class that defines it, so a superclass lists its subclasses' users (`CL_SALV_FORM_UIE_LABEL`: SE84 9, tables 277); `SUBMIT` shows up where SE84 is silent; a class caller is named with its method from TMDIR, and what it uses of the target is in `target_component`; dynamic calls are not recorded. Very used objects (MARA) are answered from the first 5,000 rows and marked `incomplete`.
 - `rfc read-table` (RFC_READ_TABLE) cannot read a STRING or RAWSTRING column, and on
   7.50 not a row wider than 512 characters either; data preview (`vsp query`) reads both.
 
 ## Syncing with upstream
 
+Between syncs a fix goes to `patched` and is merged into `adt-fallback`. A sync
+rebases both: `patched` onto upstream, then the set's own commits onto the new
+`patched` (the merges of `patched` drop out, their commits are in it already).
+
 ```sh
 git fetch upstream
+old=$(git rev-parse patched)
 git rebase upstream/main patched
+git rebase --onto patched "$old" adt-fallback
 go build ./... && go test ./pkg/saprfc/... ./pkg/adt/... ./pkg/graph/... ./pkg/config/... ./internal/mcp/...
-git tag vX.Y.Z-patch.N && git push --force-with-lease origin patched --tags
+git tag vX.Y.Z-patch.N adt-fallback
+git push --force-with-lease origin patched adt-fallback && git push origin vX.Y.Z-patch.N
 ```
 
 Patches that upstream accepts are dropped from `patched` on the next rebase.

@@ -1,12 +1,13 @@
 name: Fork CI
 
-# ci.yml (upstream) only runs for main; this covers the fork's patched branch.
+# ci.yml (upstream) only runs for main; this covers the fork's patched and
+# adt-fallback branches (release tags are cut from adt-fallback).
 # Kept as a separate file so upstream syncs never conflict on it.
 on:
   push:
-    branches: [patched]
+    branches: [patched, adt-fallback]
   pull_request:
-    branches: [patched]
+    branches: [patched, adt-fallback]
 
 permissions:
   contents: read
