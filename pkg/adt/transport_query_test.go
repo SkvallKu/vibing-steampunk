@@ -316,4 +316,13 @@ func TestSQLLetterList(t *testing.T) {
 	if got := SAPLanguageKey(""); got != "E" {
 		t.Errorf("empty -> %q", got)
 	}
+	// Not the first letter: Estonian would be English, Latvian and Lithuanian Polish.
+	for in, want := range map[string]string{"ET": "9", "LV": "Y", "LT": "X", "ID": "i", "eo": "EO"} {
+		if got := SAPLanguageKey(in); got != want {
+			t.Errorf("%s -> %q, want %q", in, got, want)
+		}
+	}
+	if _, ok := LanguageKey("EO"); ok {
+		t.Error("EO has no key, and LanguageKey says it has")
+	}
 }

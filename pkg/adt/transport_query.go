@@ -589,25 +589,38 @@ func transportStatusText(status string) string {
 
 // SAPLanguageKey maps a session language (ISO code or SAP key) to the
 // one-character key SAP stores (T002-SPRAS): E07T, TSTCT, and the RFC logon.
-// The key is not always the ISO code's first letter: ZH is 1, UK is 8, and
-// U is Finnish.
+// The key is not always the ISO code's first letter: ZH is 1, UK is 8, U is
+// Finnish, and ET is 9 where its first letter would be English. A code
+// that is not in the table is returned as given, not guessed at: SAP then
+// refuses it, or a query finds nothing, instead of answering in another
+// language.
 func SAPLanguageKey(lang string) string {
 	l := strings.ToUpper(strings.TrimSpace(lang))
 	if l == "" {
 		return "E"
 	}
-	if len(l) == 1 {
-		return l
-	}
-	if k, ok := sapLanguageKeys[l]; ok {
+	if k, ok := LanguageKey(l); ok {
 		return k
 	}
-	return l[:1]
+	return l
 }
 
+// LanguageKey is SAPLanguageKey that tells whether it knows the code. A
+// one-character input is taken as a key already.
+func LanguageKey(lang string) (string, bool) {
+	l := strings.ToUpper(strings.TrimSpace(lang))
+	if len(l) == 1 {
+		return l, true
+	}
+	k, ok := sapLanguageKeys[l]
+	return k, ok
+}
+
+// sapLanguageKeys is T002's ISO code to key, for the languages SAP ships.
 var sapLanguageKeys = map[string]string{
-	"AR": "A", "BG": "W", "CS": "C", "DA": "K", "DE": "D", "EL": "G", "EN": "E", "ES": "S",
-	"FI": "U", "FR": "F", "HE": "B", "HR": "6", "HU": "H", "IT": "I", "JA": "J", "KO": "3",
+	"AF": "a", "AR": "A", "BG": "W", "CA": "c", "CS": "C", "DA": "K", "DE": "D", "EL": "G",
+	"EN": "E", "ES": "S", "ET": "9", "FI": "U", "FR": "F", "HE": "B", "HR": "6", "HU": "H",
+	"ID": "i", "IT": "I", "JA": "J", "KK": "k", "KO": "3", "LT": "X", "LV": "Y", "MS": "7",
 	"NL": "N", "NO": "O", "PL": "L", "PT": "P", "RO": "4", "RU": "R", "SK": "Q", "SL": "5",
-	"SR": "0", "SV": "V", "TH": "2", "TR": "T", "UK": "8", "ZF": "M", "ZH": "1",
+	"SR": "0", "SV": "V", "TH": "2", "TR": "T", "UK": "8", "VI": "v", "ZF": "M", "ZH": "1",
 }

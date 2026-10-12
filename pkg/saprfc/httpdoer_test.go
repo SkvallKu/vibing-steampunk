@@ -84,6 +84,11 @@ func TestTunnelRefusesAnotherLanguage(t *testing.T) {
 		{"1", "http://h/sap/bc/adt/discovery?sap-language=ZH", false},
 		{"R", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=DE", true},
 		{"E", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=RU", true},
+		// Estonian's key is 9: its first letter would pass it as English.
+		{"E", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=ET", true},
+		{"9", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=ET", false},
+		// A code with no key is refused, not guessed at.
+		{"E", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=EO", true},
 	}
 	for _, c := range cases {
 		req, err := http.NewRequest("GET", c.url, nil)

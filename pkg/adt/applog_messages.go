@@ -198,18 +198,7 @@ func (c *Client) AppLogMessages(ctx context.Context, handles []string) (map[stri
 // is what T100 is keyed by. A one-character input is taken as already
 // converted; an unknown code falls back to English.
 func spras(lang string) string {
-	lang = strings.ToUpper(strings.TrimSpace(lang))
-	if len(lang) == 1 {
-		return lang
-	}
-	table := map[string]string{
-		"EN": "E", "DE": "D", "FR": "F", "ES": "S", "IT": "I", "PT": "P", "NL": "N", "RU": "R",
-		"JA": "J", "ZH": "1", "ZF": "M", "KO": "3", "PL": "L", "CS": "C", "SK": "Q", "TR": "T",
-		"SV": "V", "DA": "K", "FI": "U", "NO": "O", "HU": "H", "EL": "G", "UK": "8", "AR": "A",
-		"HE": "B", "TH": "2", "RO": "4", "HR": "6", "SL": "5", "BG": "W", "LT": "X", "LV": "Y",
-		"ET": "9", "SR": "0", "CA": "c", "ID": "i", "MS": "7", "VI": "v", "KK": "k", "AF": "a",
-	}
-	if k, ok := table[lang]; ok {
+	if k, ok := LanguageKey(lang); ok {
 		return k
 	}
 	return "E"

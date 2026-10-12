@@ -231,7 +231,12 @@ func (d *TunnelDoer) checkLanguage(u *url.URL) error {
 		return nil
 	}
 	logon := adt.SAPLanguageKey(d.dest.Language)
-	if adt.SAPLanguageKey(asked) == logon {
+	key, known := adt.LanguageKey(asked)
+	if !known {
+		return fmt.Errorf("RFC tunnel: this request asks for language %s, which vsp has no SAP language key for; "+
+			"over RFC every request runs in the logon language (%s)", strings.ToUpper(asked), logon)
+	}
+	if key == logon {
 		return nil
 	}
 	return fmt.Errorf("RFC tunnel: this request asks for language %s, but over RFC every request runs in the logon language (%s); "+
