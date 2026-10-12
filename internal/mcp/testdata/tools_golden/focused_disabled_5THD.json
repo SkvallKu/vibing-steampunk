@@ -958,7 +958,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Who calls this ABAP object, and what it calls. 'callers' reads the where-used list behind SE84; 'callees' reads the CROSS and WBCROSSGT cross-reference tables, which record references made at activation rather than observed calls. One hop in either direction.",
+      "description": "Who calls this ABAP object, and what it calls. 'callers' reads the where-used list behind SE84 (on 7.40, and for 7.50 tables and function modules, the cross-reference tables instead, said in source and caveat); 'callees' reads the CROSS and WBCROSSGT cross-reference tables, which record references made at activation rather than observed calls. One hop in either direction.",
       "inputSchema": {
         "properties": {
           "direction": {
@@ -974,7 +974,7 @@
             "type": "string"
           },
           "object_type": {
-            "description": "CLAS, INTF, PROG, FUGR or FUNC — with object_name, instead of object_uri",
+            "description": "CLAS, INTF, PROG, FUGR or FUNC (callers also TABL, DTEL, TTYP) — with object_name, instead of object_uri",
             "type": "string"
           },
           "object_uri": {
@@ -1032,7 +1032,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Who references this ABAP object, from the where-used list behind SE84. Reports each caller's package, type and the method the reference sits in. One hop: the list is not recursive. An empty answer and a misspelt name look identical here, so the answer says so.",
+      "description": "Who references this ABAP object, from the where-used list behind SE84. Reports each caller's package, type and the method the reference sits in. One hop: the list is not recursive. Where the system has no where-used list (7.40) or it fails on the object (7.50 tables and function modules), the CROSS, WBCROSSGT and D010INC tables answer instead, coarser than SE84; source and caveat, ahead of the list, say so. An empty answer and a misspelt name look identical here, so the answer says so.",
       "inputSchema": {
         "properties": {
           "max_results": {
@@ -1044,7 +1044,7 @@
             "type": "string"
           },
           "object_type": {
-            "description": "CLAS, INTF, PROG, FUGR or FUNC — with object_name, instead of object_uri",
+            "description": "CLAS, INTF, PROG, FUGR or FUNC (also TABL, DTEL, TTYP) — with object_name, instead of object_uri",
             "type": "string"
           },
           "object_uri": {
@@ -1648,7 +1648,7 @@
         "idempotentHint": false,
         "openWorldHint": true
       },
-      "description": "Retrieve ABAP table structure",
+      "description": "Retrieve ABAP table structure as DDL source. Where the release has none (7.40, 7.50), the source is rebuilt from the dictionary (DD02L/DD03L) and says so in its first line; it has no technical settings, foreign keys or currency/unit references",
       "inputSchema": {
         "properties": {
           "table_name": {

@@ -148,10 +148,14 @@ Direct usage (call graph):
   vsp graph CLAS ZCL_MY_CLASS
   vsp graph CLAS ZCL_MY_CLASS --direction callers
   vsp graph FUNC Z_MY_FM --direction callers
+  vsp graph TABL ZMY_TABLE --direction callers      # also DTEL, TTYP
   vsp graph CLAS ZCL_MY_CLASS --direction callees
 
 --direction callers reads the where-used list SE84 uses, so it reports the
-package and the object type rather than a bare list of include names.
+package and the object type rather than a bare list of include names. Where
+the system has no such list (7.40), or it fails on the object (7.50 tables and
+function modules), the CROSS, WBCROSSGT and D010INC tables answer instead; the
+answer then says so before the table, and it is coarser than SE84.
 
 --direction callees reads the CROSS and WBCROSSGT cross-reference tables, which
 SAP fills at activation. They record references and not calls: a dynamic
@@ -863,6 +867,14 @@ func runGraph(cmd *cobra.Command, args []string) error {
 		objURI = "/sap/bc/adt/oo/interfaces/" + encodedName
 	case "FUGR":
 		objURI = "/sap/bc/adt/functions/groups/" + encodedName
+	// Dictionary types have callers too, as in GetCallersOf. They used to fall
+	// into the default and be asked for as a class of the same name.
+	case "TABL":
+		objURI = "/sap/bc/adt/ddic/tables/" + encodedName
+	case "DTEL":
+		objURI = "/sap/bc/adt/ddic/dataelements/" + encodedName
+	case "TTYP":
+		objURI = "/sap/bc/adt/ddic/tabletypes/" + encodedName
 	default:
 		objURI = "/sap/bc/adt/oo/classes/" + encodedName
 	}
@@ -913,12 +925,12 @@ func runGraph(cmd *cobra.Command, args []string) error {
 	// succeeded.
 	switch direction {
 	case "callers":
-		callers, unresolved, err := whereUsedCallers(ctx, client, objURI)
+		used, err := whereUsedCallers(ctx, client, objURI)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "The where-used list could not be read (%v); falling back to the cross-reference tables.\n\n", err)
 			return graphFromCross(ctx, client, name, objType, "callers")
 		}
-		printWhereUsedCallers(callers, unresolved)
+		printWhereUsedCallers(used)
 		return nil
 	case "both":
 		fmt.Println("=== CALLEES (what this uses) ===")
@@ -926,12 +938,12 @@ func runGraph(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Println("\n=== CALLERS (what uses this) ===")
-		callers, unresolved, err := whereUsedCallers(ctx, client, objURI)
+		used, err := whereUsedCallers(ctx, client, objURI)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "The where-used list could not be read (%v); falling back to the cross-reference tables.\n\n", err)
 			return graphFromCross(ctx, client, name, objType, "callers")
 		}
-		printWhereUsedCallers(callers, unresolved)
+		printWhereUsedCallers(used)
 		return nil
 	default: // callees
 		return printCalleesOf(ctx, client, objURI, name, objType)
@@ -1156,22 +1168,33 @@ func crossToADTType(crossType string) string {
 	}
 }
 
-// whereUsedCallers asks the SE84 where-used list who calls an object.
-func whereUsedCallers(ctx context.Context, client *adt.Client, objURI string) ([]adt.ExposedCaller, []adt.Unsearched, error) {
-	return client.WhereUsed(ctx, objURI)
+// whereUsedCallers asks the SE84 where-used list who calls an object, or,
+// where the system has no list for it, the cross-reference tables.
+func whereUsedCallers(ctx context.Context, client *adt.Client, objURI string) (*adt.WhereUsedResult, error) {
+	return client.WhereUsedFull(ctx, objURI)
 }
 
-func printWhereUsedCallers(callers []adt.ExposedCaller, unresolved []adt.Unsearched) {
+func printWhereUsedCallers(used *adt.WhereUsedResult) {
+	callers := used.Callers
+	// Ahead of the table: the same table from the cross-reference tables is
+	// coarser than SE84's, and read without the note it passes for SE84's.
+	if note := used.SourceNote(); note != "" {
+		fmt.Printf("%s\n\n", note)
+	}
 	// Printed ahead of the table, as the callee gap is: an include standing in
 	// for its program is still a caller, but the list is not the whole answer.
-	if note := adt.UnresolvedIncludesNote(unresolved); note != "" {
+	if note := adt.UnresolvedIncludesNote(used.Unresolved); note != "" {
 		fmt.Printf("%s\n\n", note)
+	}
+	from := "the where-used list"
+	if used.Source == adt.WhereUsedSourceXref {
+		from = "the cross-reference tables"
 	}
 	if len(callers) == 0 {
 		// Checked live: a name that does not exist gets the same 200 and the
 		// same empty list as a real object nobody calls. The list cannot tell
 		// them apart, so neither should the sentence printed about it.
-		fmt.Println("The where-used list answered and it is empty: nobody calls this — or the name does not exist, which reads identically here.")
+		fmt.Printf("%s answered and it is empty: nobody calls this — or the name does not exist, which reads identically here.\n", strings.ToUpper(from[:1])+from[1:])
 		return
 	}
 	rows := make([][]string, 0, len(callers))
@@ -1183,7 +1206,7 @@ func printWhereUsedCallers(callers []adt.ExposedCaller, unresolved []adt.Unsearc
 		rows = append(rows, []string{c.Name, c.Type, c.Package, kind, c.Component})
 	}
 	fmt.Print(formatTable([]string{"Object", "Type", "Package", "Kind", "References in"}, rows))
-	fmt.Fprintf(os.Stderr, "\n%d callers, from the where-used list.\n", len(callers))
+	fmt.Fprintf(os.Stderr, "\n%d callers, from %s.\n", len(callers), from)
 }
 
 func readStdin() ([]byte, error) {

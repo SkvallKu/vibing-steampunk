@@ -3,10 +3,12 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -159,10 +161,66 @@ func (s *Server) handleGetCalleesOf(ctx context.Context, request mcp.CallToolReq
 	return mcp.NewToolResultText(string(result)), nil
 }
 
+// callGraphReply is a call graph answer whose JSON says what it is before it
+// lists anything: the object, the source and its caveats first, the callers
+// or callees last. Marshalled as a plain map it came out in alphabetical
+// order, which put the caveat of an answer from the cross-reference tables
+// after the whole list of callers.
+type callGraphReply map[string]any
+
+var (
+	callGraphReplyFirst = []string{"object_uri", "direction", "source", "caveat", "incomplete", "gap", "truncated", "note", "total"}
+	callGraphReplyLast  = []string{"callers", "callees", "edges"}
+)
+
+func (r callGraphReply) MarshalJSON() ([]byte, error) {
+	placed := map[string]bool{}
+	var keys []string
+	for _, k := range callGraphReplyFirst {
+		if _, ok := r[k]; ok {
+			keys = append(keys, k)
+			placed[k] = true
+		}
+	}
+	for _, k := range callGraphReplyLast {
+		placed[k] = true
+	}
+	var rest []string
+	for k := range r {
+		if !placed[k] {
+			rest = append(rest, k)
+		}
+	}
+	sort.Strings(rest)
+	keys = append(keys, rest...)
+	for _, k := range callGraphReplyLast {
+		if _, ok := r[k]; ok {
+			keys = append(keys, k)
+		}
+	}
+	var b bytes.Buffer
+	b.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		name, _ := json.Marshal(k)
+		value, err := json.Marshal(r[k])
+		if err != nil {
+			return nil, err
+		}
+		b.Write(name)
+		b.WriteByte(':')
+		b.Write(value)
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
+}
+
 // callGraphAnswer is the one place either direction is answered, so that the
 // tool, the analyze action and the statistics all report the same thing about
 // the same object.
-func (s *Server) callGraphAnswer(ctx context.Context, request mcp.CallToolRequest, direction string) (map[string]any, error) {
+func (s *Server) callGraphAnswer(ctx context.Context, request mcp.CallToolRequest, direction string) (callGraphReply, error) {
 	objectURI, err := s.callGraphObjectURI(ctx, request)
 	if err != nil {
 		return nil, err
@@ -173,7 +231,7 @@ func (s *Server) callGraphAnswer(ctx context.Context, request mcp.CallToolReques
 		limit = int(max)
 	}
 
-	answer := map[string]any{
+	answer := callGraphReply{
 		"object_uri": objectURI,
 		"direction":  direction,
 	}
@@ -435,6 +493,10 @@ func (s *Server) handleAnalyzeCallGraph(ctx context.Context, request mcp.CallToo
 		// only ever a number in a request nobody answered.
 		"depth": 1,
 	}
+	if graph.Caveat != "" {
+		output["source"] = graph.Source
+		output["caveat"] = graph.Caveat
+	}
 	if note := callGraphGapNote(graph, direction); note != "" {
 		// Beside the edges, not inside them: an include standing where its
 		// program should be is still an edge, and a table that could not be
@@ -443,7 +505,7 @@ func (s *Server) handleAnalyzeCallGraph(ctx context.Context, request mcp.CallToo
 		output["gap"] = note
 	}
 
-	result, _ := json.MarshalIndent(output, "", "  ")
+	result, _ := json.MarshalIndent(callGraphReply(output), "", "  ")
 	return mcp.NewToolResultText(string(result)), nil
 }
 

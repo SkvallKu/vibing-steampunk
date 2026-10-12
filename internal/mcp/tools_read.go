@@ -86,7 +86,7 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetTable") {
 		s.mcpServer.AddTool(mcp.NewTool("GetTable",
-			mcp.WithDescription("Retrieve ABAP table structure"),
+			mcp.WithDescription("Retrieve ABAP table structure as DDL source. Where the release has none (7.40, 7.50), the source is rebuilt from the dictionary (DD02L/DD03L) and says so in its first line; it has no technical settings, foreign keys or currency/unit references"),
 			mcp.WithString("table_name",
 				mcp.Required(),
 				mcp.Description("Name of the ABAP table"),
@@ -176,7 +176,7 @@ func (s *Server) registerReadTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("GetStructure") {
 		s.mcpServer.AddTool(mcp.NewTool("GetStructure",
-			mcp.WithDescription("Retrieve ABAP Structure"),
+			mcp.WithDescription("Retrieve ABAP Structure as DDL source. Where the release has none (7.40, 7.50), the source is rebuilt from the dictionary (DD02L/DD03L) and says so in its first line"),
 			mcp.WithString("structure_name",
 				mcp.Required(),
 				mcp.Description("Name of the ABAP Structure"),

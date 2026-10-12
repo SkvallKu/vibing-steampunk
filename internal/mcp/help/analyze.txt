@@ -6,7 +6,9 @@ Syntax check:
 Call graph (one hop; object_type + object_name work instead of object_uri):
   SAP(action="analyze", params={"type": "call_graph", "object_uri": "/sap/bc/adt/oo/classes/zcl_test"})
   SAP(action="analyze", params={"type": "callers", "object_type": "CLAS", "object_name": "ZCL_TEST"})
-    who references it — the where-used list behind SE84
+    who references it — the where-used list behind SE84; on 7.40, and for 7.50
+    tables and function modules, the CROSS/WBCROSSGT/D010INC tables instead,
+    coarser, and source/caveat say so first
   SAP(action="analyze", params={"type": "callees", "object_type": "CLAS", "object_name": "ZCL_TEST"})
     what it references — the CROSS and WBCROSSGT tables, filled at activation,
     so these are recorded references and not observed calls; needs free SQL

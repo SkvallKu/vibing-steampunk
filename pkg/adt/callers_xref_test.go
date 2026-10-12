@@ -512,3 +512,28 @@ func TestQueryInKeepsTheChunksThatAnswer(t *testing.T) {
 		t.Errorf("two chunks, two queries; asked %d times", len(asked))
 	}
 }
+
+// A call graph of callers built from the tables says so on its root, as the
+// where-used answer does; before, the source stopped at WhereUsedFull and
+// AnalyzeCallGraph and the usage examples showed the tables' callers as SE84's.
+func TestCallGraphCallersCarryTheirSource(t *testing.T) {
+	x := &xrefServer{usageStatus: http.StatusNotFound, tables: map[string]string{
+		"WBCROSSGT": tableXML(col("INCLUDE", "ZREPORT"), col("NAME", "ZMARA")),
+		"TRDIR":     tableXML(col("NAME", "ZREPORT"), col("SUBC", "1")),
+		"TADIR":     tableXML(col("OBJECT", "PROG"), col("OBJ_NAME", "ZREPORT"), col("DEVCLASS", "ZTOOLS")),
+	}}
+	srv := x.start(t)
+	defer srv.Close()
+
+	root, err := NewClient(srv.URL, "user", "pass").CallGraph(context.Background(), "/sap/bc/adt/ddic/tables/zmara", &CallGraphOptions{Direction: "callers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root.Children) != 1 || root.Source != WhereUsedSourceXref ||
+		!strings.Contains(root.Caveat, "cross-reference tables") || !strings.Contains(root.Caveat, "no where-used list") {
+		t.Errorf("root = source %q, caveat %q, %d children", root.Source, root.Caveat, len(root.Children))
+	}
+	if note := (&WhereUsedResult{Source: WhereUsedSourceList}).SourceNote(); note != "" {
+		t.Errorf("the where-used list needs no note, got %q", note)
+	}
+}

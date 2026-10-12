@@ -257,11 +257,12 @@ func runSourceContext(cmd *cobra.Command, args []string) error {
 		}
 		if uri != "" {
 			uri = strings.TrimSuffix(uri, "/source/main")
-			found, unresolved, err := client.WhereUsed(ctx, uri)
+			used, err := client.WhereUsedFull(ctx, uri)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "  the caller list could not be read: %v\n", err)
 			} else {
-				if note := adt.UnresolvedIncludesNote(unresolved); note != "" {
+				found := used.Callers
+				if note := adt.UnresolvedIncludesNote(used.Unresolved); note != "" {
 					fmt.Fprintf(os.Stderr, "  %s\n", note)
 				}
 				list := make([]ctxcomp.Caller, 0, len(found))
@@ -272,6 +273,11 @@ func runSourceContext(cmd *cobra.Command, args []string) error {
 					})
 				}
 				upstream = ctxcomp.SummariseCallers(list, 6).Text()
+				// In the prologue itself, not only on stderr: the summary is
+				// read as SE84's unless it says otherwise.
+				if note := used.SourceNote(); note != "" {
+					upstream = "* " + note + "\n" + upstream
+				}
 			}
 		}
 	}

@@ -336,8 +336,28 @@ func impactNotes(result *adt.DumpImpactResult) []string {
 				"they are reported as the include, so exposure and on_path are not complete: %s",
 			len(gaps), len(result.Units), strings.Join(gaps, "; ")))
 	}
+	if xref := unitsFromXref(result); len(xref) > 0 {
+		// The source of each unit's callers is in units[], below the list it
+		// shapes; said here with the other caveats on the headline.
+		notes = append(notes, fmt.Sprintf(
+			"%d of %d units have no where-used list, and their callers come from the cross-reference tables, "+
+				"coarser than SE84 (references rather than calls, dynamic calls not seen): %s",
+			len(xref), len(result.Units), strings.Join(xref, "; ")))
+	}
 	notes = append(notes, noteImpactIsNotBlame)
 	return notes
+}
+
+// unitsFromXref names the units whose callers came from the cross-reference
+// tables, with what that cost.
+func unitsFromXref(result *adt.DumpImpactResult) []string {
+	var out []string
+	for _, u := range result.Units {
+		if u.Source == adt.WhereUsedSourceXref {
+			out = append(out, u.Object+": "+u.Caveat)
+		}
+	}
+	return out
 }
 
 // unitsWithUnresolvedIncludes names the units whose callers include program

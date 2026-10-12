@@ -300,6 +300,26 @@ func (c *Client) CallersFromXref(ctx context.Context, objectURI string) (*WhereU
 	return res, nil
 }
 
+// SourceNote is what an answer built from r says ahead of its callers: empty
+// for the where-used list; for the tables, that they answered instead of it,
+// why, and how they read differently from SE84. The same list from a coarser
+// source is otherwise read as SE84's — CL_SALV_FORM_UIE_LABEL: SE84 9 callers,
+// the tables 277.
+func (r *WhereUsedResult) SourceNote() string {
+	if r == nil || r.Source != WhereUsedSourceXref {
+		return ""
+	}
+	note := "Callers read from the cross-reference tables (CROSS, WBCROSSGT, D010INC), not the where-used list, because " + r.Why +
+		". Coarser than SE84: references rather than calls (declaring a variable of a type counts, a superclass lists its subclasses' users), dynamic calls not seen"
+	if u := UnsearchedNote(r.Unsearched, len(r.Unsearched), "table"); u != "" {
+		note += "; " + u
+	}
+	if r.Truncated != "" {
+		note += "; " + r.Truncated
+	}
+	return note + "."
+}
+
 // xrefCaveat is what an answer from the tables should be read with: what it
 // could not look at and where it stopped, when either happened.
 func xrefCaveat(res *WhereUsedResult) string {

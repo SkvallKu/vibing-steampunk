@@ -93,7 +93,7 @@ func (s *Server) registerDevTools(shouldRegister func(string) bool) {
 
 	if shouldRegister("RunATCCheck") {
 		s.mcpServer.AddTool(mcp.NewTool("RunATCCheck",
-			mcp.WithDescription("Run ATC (ABAP Test Cockpit) code quality check on an object. Returns findings with priority, check title, message, and location. Priority: 1=Error, 2=Warning, 3=Info."),
+			mcp.WithDescription("Run ATC (ABAP Test Cockpit) code quality check on an object. Returns findings with priority, check title, message, and location. Priority: 1=Error, 2=Warning, 3=Info. summary.notes carries what the system said about the run: on 7.40 a variant that does not exist is replaced by DEFAULT, and only the notes say so."),
 			mcp.WithString("object_url",
 				mcp.Required(),
 				mcp.Description("ADT URL of the object (e.g., /sap/bc/adt/oo/classes/ZCL_TEST)"),

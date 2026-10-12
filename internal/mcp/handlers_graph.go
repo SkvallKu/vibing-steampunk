@@ -1290,7 +1290,13 @@ func (s *Server) fetchUsageCallerSources(ctx context.Context, target graph.Usage
 	}
 
 	var gaps []adt.Unsearched
-	cands, err := s.fetchUsageCandidatesViaADT(ctx, target, maxCandidates)
+	cands, caveat, err := s.fetchUsageCandidatesViaADT(ctx, target, maxCandidates)
+	if caveat != "" {
+		// The examples come from callers the cross-reference tables named,
+		// which is a coarser list than SE84's: said beside them, as it was
+		// when this path failed on 7.40 and the gaps said so.
+		gaps = append(gaps, adt.Unsearched{Object: "the where-used list", Reason: caveat})
+	}
 	if err != nil {
 		// The where-used resource failing and finding nobody are different
 		// answers, and falling back to the tables does not make the first one
@@ -1355,10 +1361,13 @@ func tableOfQuery(query string) string {
 	return "cross-reference table"
 }
 
-func (s *Server) fetchUsageCandidatesViaADT(ctx context.Context, target graph.UsageTarget, maxCandidates int) ([]usageCallerCandidate, error) {
+// fetchUsageCandidatesViaADT returns the callers to take examples from, and the
+// caveat of their source when the cross-reference tables answered instead of
+// the where-used list.
+func (s *Server) fetchUsageCandidatesViaADT(ctx context.Context, target graph.UsageTarget, maxCandidates int) ([]usageCallerCandidate, string, error) {
 	targetURI, err := s.resolveUsageTargetURI(ctx, target)
 	if err != nil || targetURI == "" {
-		return nil, err
+		return nil, "", err
 	}
 
 	// The where-used list, not a call graph resource: the one this used to ask
@@ -1367,7 +1376,7 @@ func (s *Server) fetchUsageCandidatesViaADT(ctx context.Context, target graph.Us
 	// two-letter type codes the column cannot hold.
 	root, err := s.adtClient.CallGraph(ctx, targetURI, &adt.CallGraphOptions{Direction: "callers"})
 	if err != nil || root == nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	seen := make(map[string]bool)
@@ -1383,7 +1392,7 @@ func (s *Server) fetchUsageCandidatesViaADT(ctx context.Context, target graph.Us
 			break
 		}
 	}
-	return out, nil
+	return out, root.Caveat, nil
 }
 
 func (s *Server) resolveUsageTargetURI(ctx context.Context, target graph.UsageTarget) (string, error) {

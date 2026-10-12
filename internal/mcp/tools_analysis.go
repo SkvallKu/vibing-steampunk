@@ -20,14 +20,15 @@ func (s *Server) registerAnalysisTools(shouldRegister func(string) bool) {
 	// should not have to build a URI to ask about it.
 	if shouldRegister("GetCallGraph") {
 		s.mcpServer.AddTool(mcp.NewTool("GetCallGraph",
-			mcp.WithDescription("Who calls this ABAP object, and what it calls. 'callers' reads the where-used list behind SE84; "+
+			mcp.WithDescription("Who calls this ABAP object, and what it calls. 'callers' reads the where-used list behind SE84 "+
+				"(on 7.40, and for 7.50 tables and function modules, the cross-reference tables instead, said in source and caveat); "+
 				"'callees' reads the CROSS and WBCROSSGT cross-reference tables, which record references made at activation "+
 				"rather than observed calls. One hop in either direction."),
 			mcp.WithString("object_uri",
 				mcp.Description("ADT URI of the object (e.g., /sap/bc/adt/oo/classes/zcl_test). Or give object_type and object_name."),
 			),
 			mcp.WithString("object_type",
-				mcp.Description("CLAS, INTF, PROG, FUGR or FUNC — with object_name, instead of object_uri"),
+				mcp.Description("CLAS, INTF, PROG, FUGR or FUNC (callers also TABL, DTEL, TTYP) — with object_name, instead of object_uri"),
 			),
 			mcp.WithString("object_name",
 				mcp.Description("Object name, e.g. ZCL_ORDER_PROCESSING"),
@@ -64,12 +65,13 @@ func (s *Server) registerAnalysisTools(shouldRegister func(string) bool) {
 		s.mcpServer.AddTool(mcp.NewTool("GetCallersOf",
 			mcp.WithDescription("Who references this ABAP object, from the where-used list behind SE84. Reports each caller's "+
 				"package, type and the method the reference sits in. One hop: the list is not recursive. "+
+				"Where the system has no where-used list (7.40) or it fails on the object (7.50 tables and function modules), the CROSS, WBCROSSGT and D010INC tables answer instead, coarser than SE84; source and caveat, ahead of the list, say so. "+
 				"An empty answer and a misspelt name look identical here, so the answer says so."),
 			mcp.WithString("object_uri",
 				mcp.Description("ADT URI of the object (e.g., /sap/bc/adt/oo/classes/zcl_test). Or give object_type and object_name."),
 			),
 			mcp.WithString("object_type",
-				mcp.Description("CLAS, INTF, PROG, FUGR or FUNC — with object_name, instead of object_uri"),
+				mcp.Description("CLAS, INTF, PROG, FUGR or FUNC (also TABL, DTEL, TTYP) — with object_name, instead of object_uri"),
 			),
 			mcp.WithString("object_name",
 				mcp.Description("Object name, e.g. ZCL_ORDER_PROCESSING"),

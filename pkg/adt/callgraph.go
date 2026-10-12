@@ -21,6 +21,11 @@ type CallGraphNode struct {
 	// child list is only as complete as the sources behind it, and an empty
 	// or short one means nothing until you know whether a source was missing.
 	Unsearched []Unsearched `json:"unsearched,omitempty"`
+	// Source and Caveat are set on a callers root answered from the
+	// cross-reference tables instead of the where-used list
+	// (WhereUsedResult.SourceNote).
+	Source string `json:"source,omitempty"`
+	Caveat string `json:"caveat,omitempty"`
 }
 
 // CallGraphOptions configures call graph retrieval.
