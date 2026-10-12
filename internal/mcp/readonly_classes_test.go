@@ -789,7 +789,7 @@ var packageGated = map[string]string{
 	"tool LockObject":              "a MODIFY lock is checked as an operation but not against --allowed-packages; the write it precedes is",
 	"tool PublishServiceBinding":   "publishing a service binding is checked as an update (#283) but not against --allowed-packages: the binding's package needs a lookup",
 	"tool UnpublishServiceBinding": "unpublishing a service binding is checked as an update (#283) but not against --allowed-packages: the binding's package needs a lookup",
-	"tool SetTextElements":         "writes a program's texts through ZADT_VSP; refused under --read-only (#283), not checked against --allowed-packages: the program's package needs a lookup",
+	"tool SetTextElements":         "",
 }
 
 const gapActivationPackage = "activation is checked as an operation (A) but not against --allowed-packages: resolving each " +
