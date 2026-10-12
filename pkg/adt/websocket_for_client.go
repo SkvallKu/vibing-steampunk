@@ -1,5 +1,7 @@
 package adt
 
+import "errors"
+
 // The ZADT_VSP WebSocket clients, built from the ADT client they work beside.
 //
 // Every caller used to assemble one by hand from whatever configuration it had
@@ -28,12 +30,35 @@ func (c *Client) wsCredentials() (user, password string, cookies map[string]stri
 	return c.config.Username, c.config.Password, nil
 }
 
+// ErrNoWebSocket is the refusal of a ZADT_VSP WebSocket on a connection that
+// cannot carry one.
+var ErrNoWebSocket = errors.New("the ZADT_VSP WebSocket is not available on this connection")
+
+// noWebSocketDoer is an HTTPDoer whose channel carries ADT requests but not a
+// WebSocket upgrade. NoWebSocket says why, wrapping ErrNoWebSocket.
+type noWebSocketDoer interface{ NoWebSocket() error }
+
+// webSocketRefusal is why a WebSocket built for c cannot connect, or nil.
+// Without it the upgrade went to the URL's host, which a client reached only
+// over the RFC tunnel has no route to, and failed after a timeout with advice
+// to deploy ZADT_VSP.
+func (c *Client) webSocketRefusal() error {
+	if c.transport == nil {
+		return nil
+	}
+	if d, ok := c.transport.httpClient.(noWebSocketDoer); ok {
+		return d.NoWebSocket()
+	}
+	return nil
+}
+
 // NewDebugWebSocketClient returns an unconnected ZADT_VSP WebSocket client for
 // the system c talks to, authenticated as c is.
 func (c *Client) NewDebugWebSocketClient() *DebugWebSocketClient {
 	user, password, cookies := c.wsCredentials()
 	ws := NewDebugWebSocketClient(c.config.BaseURL, c.config.Client, user, password, c.config.InsecureSkipVerify)
 	ws.transportCmd = TransportCmdName(c.config.TransportCmd)
+	ws.refused = c.webSocketRefusal()
 	if len(cookies) > 0 {
 		ws.SetCookies(cookies)
 	}
@@ -49,6 +74,7 @@ func (c *Client) NewAMDPWebSocketClient() *AMDPWebSocketClient {
 	user, password, cookies := c.wsCredentials()
 	ws := NewAMDPWebSocketClient(c.config.BaseURL, c.config.Client, user, password, c.config.InsecureSkipVerify)
 	ws.transportCmd = TransportCmdName(c.config.TransportCmd)
+	ws.refused = c.webSocketRefusal()
 	if len(cookies) > 0 {
 		ws.SetCookies(cookies)
 	}

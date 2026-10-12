@@ -28,6 +28,9 @@ type BaseWebSocketClient struct {
 	password string
 	cookies  map[string]string
 	insecure bool
+	// refused, when set, is what Connect answers without dialling: the
+	// connection the client was built for cannot carry a WebSocket.
+	refused error
 
 	conn      *websocket.Conn
 	sessionID string
@@ -214,6 +217,9 @@ func NewBaseWebSocketClient(baseURL, client, user, password string, insecure boo
 func (c *BaseWebSocketClient) Connect(ctx context.Context) error {
 	if c.transportCmd != "" {
 		return fmt.Errorf("%w (%s)", ErrWebSocketOverTransportCmd, c.transportCmd)
+	}
+	if c.refused != nil {
+		return c.refused
 	}
 	pinned := c.credentials != nil
 	var user, password string

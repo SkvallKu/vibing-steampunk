@@ -154,6 +154,13 @@ func (d *TunnelDoer) conn(ctx context.Context, slot *tunnelSlot, pinned bool) (*
 // every POST/PUT/DELETE.
 func (d *TunnelDoer) NoCSRF() bool { return true }
 
+// NoWebSocket tells pkg/adt that the ZADT_VSP WebSocket cannot go this way:
+// the tunnel carries request and response, and a client that needs it has no
+// HTTP path to the system's ICM to upgrade instead.
+func (d *TunnelDoer) NoWebSocket() error {
+	return fmt.Errorf("%w: this system is reached over the RFC tunnel (rfc_saprouter), which carries ADT requests and not a WebSocket; this needs a direct HTTP connection to the system", adt.ErrNoWebSocket)
+}
+
 // ChannelSystem tells pkg/adt which system the tunnel reaches, from
 // RFC_SYSTEM_INFO on the tunnel's connection, asked once. Over ADT a release
 // without /sap/bc/adt/core/http/systeminformation has only T000's logical

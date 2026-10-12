@@ -786,7 +786,7 @@ func (s *Server) handleMoveObject(ctx context.Context, request mcp.CallToolReque
 
 	// Ensure WebSocket client is connected
 	if err := s.ensureDebugWSClient(ctx); err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to connect to ZADT_VSP WebSocket: %v. Ensure ZADT_VSP is deployed and SAPC/SICF are configured.", err)), nil
+		return wsConnectFailed(err), nil
 	}
 
 	result, err := s.debugWSClient.MoveObject(ctx, objectType, objectName, newPackage)

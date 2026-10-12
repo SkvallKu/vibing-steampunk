@@ -430,3 +430,19 @@ func TestTunneledClientTakesItsTimeout(t *testing.T) {
 		t.Errorf("logon under a deadline in %v, want the client's 90s", left)
 	}
 }
+
+// The ZADT_VSP WebSocket dials the URL's host, which a system reached only
+// over the tunnel has no route to: it is refused at once, saying why, rather
+// than after a dial timeout with advice to deploy ZADT_VSP.
+func TestTunneledClientRefusesTheWebSocket(t *testing.T) {
+	c := NewTunneledADTClient("http://h.invalid:8000", "u", "p", Params{})
+	for name, connect := range map[string]func(context.Context) error{
+		"debug": c.NewDebugWebSocketClient().Connect,
+		"amdp":  c.NewAMDPWebSocketClient().Connect,
+	} {
+		err := connect(context.Background())
+		if !errors.Is(err, adt.ErrNoWebSocket) || !strings.Contains(err.Error(), "RFC tunnel") {
+			t.Errorf("%s: Connect = %v, want the tunnel's refusal", name, err)
+		}
+	}
+}

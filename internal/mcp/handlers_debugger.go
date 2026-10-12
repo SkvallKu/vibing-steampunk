@@ -5,6 +5,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -48,6 +49,16 @@ func (s *Server) ensureDebugWSClient(ctx context.Context) error {
 	s.debugWSClient = s.adtClient.NewDebugWebSocketClient()
 
 	return s.debugWSClient.Connect(ctx)
+}
+
+// wsConnectFailed answers a ZADT_VSP WebSocket that did not connect. The advice
+// to deploy ZADT_VSP is left out where no deployment would help: the
+// connection cannot carry a WebSocket at all.
+func wsConnectFailed(err error) *mcp.CallToolResult {
+	if errors.Is(err, adt.ErrNoWebSocket) {
+		return newToolResultError(fmt.Sprintf("Failed to connect to ZADT_VSP WebSocket: %v", err))
+	}
+	return newToolResultError(fmt.Sprintf("Failed to connect to ZADT_VSP WebSocket: %v. Ensure ZADT_VSP is deployed and SAPC/SICF are configured.", err))
 }
 
 // The breakpoint half of the debugger, through SAP's own ADT resource on the
@@ -195,7 +206,7 @@ func (s *Server) handleCallRFC(ctx context.Context, request mcp.CallToolRequest)
 
 	// Ensure WebSocket client is connected
 	if err := s.ensureDebugWSClient(ctx); err != nil {
-		return newToolResultError(fmt.Sprintf("Failed to connect to ZADT_VSP WebSocket: %v. Ensure ZADT_VSP is deployed and SAPC/SICF are configured.", err)), nil
+		return wsConnectFailed(err), nil
 	}
 
 	result, err := s.debugWSClient.CallRFC(ctx, function, params)
