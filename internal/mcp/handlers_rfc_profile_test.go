@@ -3,6 +3,7 @@ package mcp
 import (
 	"testing"
 
+	"github.com/oisee/vibing-steampunk/pkg/adt"
 	"github.com/oisee/vibing-steampunk/pkg/config"
 )
 
@@ -44,5 +45,30 @@ func TestRFCDestination_ServerSystemTakesItsOwnRoute(t *testing.T) {
 	}
 	if _, ok := rfcTunnelDest(s.config); !ok {
 		t.Error("a server system with a route does not tunnel its ADT client")
+	}
+}
+
+// The tunnel logs on as rfc_user, which may differ from the HTTP user the ADT
+// preflight compares with the pin. The pin goes with the tunnel's logon, so
+// saprfc.Open checks that user before dialling and the system after.
+func TestRFCTunnelDest_CarriesThePin(t *testing.T) {
+	s := serverFor(t, "https://prodsys-a.example:44300", "200", "prodsys-b")
+	s.config.Username, s.config.Password = "READER", "reader-secret"
+	s.config.System = &config.SystemConfig{RFCHost: "10.0.0.2", RFCSysnr: "02", RFCSaprouter: "/H/qas-router/S/3299", RFCUser: "RFCUSER"}
+	pin, err := adt.ParseIdentityPin("QAS.200/READER")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.config.Expect = pin
+
+	dest, ok := rfcTunnelDest(s.config)
+	if !ok {
+		t.Fatal("a server system with a route does not tunnel its ADT client")
+	}
+	if dest.Expect != pin {
+		t.Fatalf("tunnel destination pin = %v, want %v", dest.Expect, pin)
+	}
+	if err := dest.Expect.CheckConfigured(dest.User, dest.Client); err == nil {
+		t.Errorf("RFC user %s passes a pin for READER", dest.User)
 	}
 }

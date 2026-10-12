@@ -409,6 +409,10 @@ func rfcTunnelDest(c *Config) (saprfc.Params, bool) {
 	if err != nil {
 		return saprfc.Params{}, false
 	}
+	// The pin goes with the tunnel's logon, as with an RFC call: the RFC user
+	// (rfc_user, which may not be the HTTP user the ADT preflight compares)
+	// is checked before dialling, and the system behind the gateway after.
+	in.Expect = c.Expect
 	dest, err := saprfc.Resolve(in)
 	return dest, err == nil && dest.Router != ""
 }

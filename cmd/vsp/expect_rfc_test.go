@@ -115,3 +115,25 @@ func TestServerChecksThePinBeforeInteractiveLogon(t *testing.T) {
 		t.Errorf("the SAML logon contacted the system %d time(s) before the refusal", n)
 	}
 }
+
+// A system reached only over the RFC tunnel logs on as its rfc_user, not the
+// HTTP user the ADT preflight compares with the pin. The tunnel's
+// destination carries the pin, so that user is checked before dialling.
+func TestRFCTunnelDestCarriesThePin(t *testing.T) {
+	params := &systemParams{
+		URL: "https://prodsys-a.example:44300", User: "READER", Password: "secret", Client: "200",
+		RFCHost: "10.0.0.2", RFCSysnr: "02", RFCSaprouter: "/H/router.example/S/3299",
+		RFCUser: "RFCUSER", RFCPassword: "secret",
+		Expect: "QAS.200/READER", ExpectSource: "--expect",
+	}
+	dest, ok := rfcTunnelDest(params)
+	if !ok {
+		t.Fatal("a system with a route does not tunnel")
+	}
+	if dest.Expect == nil || dest.Expect.String() != "QAS.200/READER" {
+		t.Fatalf("tunnel destination pin = %v, want QAS.200/READER", dest.Expect)
+	}
+	if err := dest.Expect.CheckConfigured(dest.User, dest.Client); !adt.IsIdentityMismatch(err) {
+		t.Errorf("RFC user %s against a pin for READER: err = %v, want an identity refusal", dest.User, err)
+	}
+}

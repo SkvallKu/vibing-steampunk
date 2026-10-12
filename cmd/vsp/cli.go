@@ -537,6 +537,12 @@ func rfcTunnelDest(params *systemParams) (saprfc.Params, bool) {
 	if in.RFCSaprouter == "" {
 		in.RFCSaprouter = strings.TrimSpace(os.Getenv("SAP_SAPROUTER"))
 	}
+	// The pin goes with the tunnel's logon (see rfcTunnelDest in
+	// internal/mcp). A pin that does not parse has refused the client
+	// already, in cliPinOption.
+	if pin, err := params.pin(); err == nil {
+		in.Expect = pin
+	}
 	dest, err := saprfc.Resolve(in)
 	return dest, err == nil && dest.Router != ""
 }
