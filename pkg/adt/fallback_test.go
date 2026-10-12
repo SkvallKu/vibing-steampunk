@@ -521,3 +521,44 @@ func TestConcurrentCallersShareOneDiscoveryRead(t *testing.T) {
 		}
 	}
 }
+
+// A table source the stand-in served says so in its first line, a comment
+// the parsers skip; one the standard resource served is left as it is.
+func TestTableSourceFromTheStandInSaysSo(t *testing.T) {
+	const discovery = `<app:service xmlns:app="http://www.w3.org/2007/app"><app:workspace>
+<app:collection href="/sap/bc/adt/zvsp/ddic/tables"/><app:collection href="/sap/bc/adt/zvsp/ddic/structures"/>
+</app:workspace></app:service>`
+	const source = "define table zdemo {\n  key mandt : mandt not null;\n}"
+	for _, tc := range []struct {
+		name     string
+		standard bool
+	}{{"stand-in", false}, {"standard", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("x-csrf-token", "test-token")
+				switch p := strings.ToLower(r.URL.Path); {
+				case p == "/sap/bc/adt/discovery":
+					w.Write([]byte(discovery))
+				case strings.HasPrefix(p, "/sap/bc/adt/ddic/") && tc.standard,
+					strings.HasPrefix(p, "/sap/bc/adt/zvsp/ddic/") && !tc.standard:
+					w.Write([]byte(source))
+				default:
+					w.WriteHeader(http.StatusNotFound)
+					w.Write([]byte("No suitable resource found"))
+				}
+			}))
+			defer srv.Close()
+			c := NewClient(srv.URL, "user", "pass")
+			for what, read := range map[string]func(context.Context, string) (string, error){"table": c.GetTable, "structure": c.GetStructure} {
+				got, err := read(context.Background(), "ZDEMO")
+				if err != nil {
+					t.Fatalf("%s: %v", what, err)
+				}
+				marked := strings.HasPrefix(got, "// No DDL source resource on this release: served by vsp's adt-fallback stand-in")
+				if marked == tc.standard || !strings.HasSuffix(got, source) {
+					t.Errorf("%s:\n%s", what, got)
+				}
+			}
+		})
+	}
+}

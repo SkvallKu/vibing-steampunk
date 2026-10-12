@@ -259,6 +259,9 @@ type Response struct {
 	StatusCode int
 	Headers    http.Header
 	Body       []byte
+	// StandIn is the adt-fallback path that answered, when the standard one
+	// is missing on this release; empty otherwise.
+	StandIn string
 }
 
 // Request performs an HTTP request to the ADT API, through the response
@@ -272,7 +275,14 @@ func (t *Transport) Request(ctx context.Context, path string, opts *RequestOptio
 	if alt == path {
 		return resp, err
 	}
-	return t.requestCached(ctx, alt, opts)
+	resp, err = t.requestCached(ctx, alt, opts)
+	if resp != nil {
+		// A copy: the cached response is shared.
+		served := *resp
+		served.StandIn = alt
+		resp = &served
+	}
+	return resp, err
 }
 
 func (t *Transport) requestCached(ctx context.Context, path string, opts *RequestOptions) (*Response, error) {

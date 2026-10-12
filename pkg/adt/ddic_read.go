@@ -30,7 +30,20 @@ func (c *Client) GetTable(ctx context.Context, tableName string) (string, error)
 		return "", fmt.Errorf("getting table source: %w", err)
 	}
 
-	return string(resp.Body), nil
+	return ddicSourceText(resp), nil
+}
+
+// ddicSourceText is a table or structure source as served, headed by a note
+// when the adt-fallback stand-in served it: on a release without the
+// resource it is vsp's ABAP set that wrote the source (with SAP's generator
+// where the release has one, its own on 7.40), and without a word it reads
+// as the system's own. A comment, so the source still parses when written
+// back.
+func ddicSourceText(resp *Response) string {
+	if resp.StandIn == "" {
+		return string(resp.Body)
+	}
+	return "// No DDL source resource on this release: served by vsp's adt-fallback stand-in (" + FallbackRoot + ").\n" + string(resp.Body)
 }
 
 // GetView retrieves the source/definition of a DDIC database view.
@@ -68,5 +81,5 @@ func (c *Client) GetStructure(ctx context.Context, structName string) (string, e
 		return "", fmt.Errorf("getting structure source: %w", err)
 	}
 
-	return string(resp.Body), nil
+	return ddicSourceText(resp), nil
 }
