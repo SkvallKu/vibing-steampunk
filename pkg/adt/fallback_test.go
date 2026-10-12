@@ -60,7 +60,9 @@ func TestFallbackPathUsesTheStandInOnlyWhenTheStandardIsMissing(t *testing.T) {
 	}
 }
 
-func TestFallbackPathWithoutDiscoveryLeavesThePathAndAsksAgain(t *testing.T) {
+// A failed read is remembered for fallbackRetryAfter: on 7.40 each read can
+// take tens of seconds. After that it is asked again.
+func TestFallbackPathWithoutDiscoveryLeavesThePathAndAsksAgainLater(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-csrf-token", "test-token")
@@ -71,15 +73,56 @@ func TestFallbackPathWithoutDiscoveryLeavesThePathAndAsksAgain(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := NewClient(srv.URL, "user", "pass")
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	c.fallback.now = func() time.Time { return now }
 
 	path := "/sap/bc/adt/textelements/programs/a"
-	for i := 0; i < 2; i++ {
+	ask := func() {
+		t.Helper()
 		if got := c.FallbackPath(context.Background(), path); got != path {
 			t.Fatalf("an unreadable discovery must leave the path: got %s", got)
 		}
 	}
-	if calls < 2 {
-		t.Errorf("a failed discovery must be asked again, asked %d times", calls)
+	ask()
+	ask()
+	if present, known := c.advertises(context.Background(), "/sap/bc/adt/atc/worklists"); present || known {
+		t.Errorf("advertises = %v, %v; want false, false", present, known)
+	}
+	if calls != 1 {
+		t.Errorf("discovery read %d times within %v of the failure, want once", calls, fallbackRetryAfter)
+	}
+
+	now = now.Add(fallbackRetryAfter)
+	ask()
+	if calls != 2 {
+		t.Errorf("discovery read %d times after %v, want twice", calls, fallbackRetryAfter)
+	}
+}
+
+// A read the caller gave up on says nothing about the system: the next
+// caller reads again at once.
+func TestCancelledDiscoveryReadIsNotRemembered(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		if r.URL.Path == "/sap/bc/adt/discovery" {
+			calls++
+			w.Write([]byte(discoveryWithStandIn))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "user", "pass")
+
+	path := "/sap/bc/adt/textelements/programs/a"
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := c.FallbackPath(cancelled, path); got != path {
+		t.Fatalf("a cancelled read must leave the path: got %s", got)
+	}
+	if got := c.FallbackPath(context.Background(), path); got != "/sap/bc/adt/zvsp/textelements/programs/a" {
+		t.Errorf("after a cancelled read got %s, want the stand-in", got)
 	}
 }
 

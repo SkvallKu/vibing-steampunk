@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ADT fallback points. On a release without a standard ADT resource,
@@ -30,16 +31,26 @@ type fallbackRoutes struct {
 	// none is. The read is made without mu held: its request may be preceded
 	// by the identity preflight, whose own requests come back here.
 	reading chan struct{}
+	// failedAt is when the last read failed: until fallbackRetryAfter has
+	// passed, callers find no routes without asking again. now is time.Now
+	// outside tests.
+	failedAt time.Time
+	now      func() time.Time
 	// Collection and template hrefs of the discovery document.
 	hrefs map[string]bool
 	// Standard paths the stand-ins cover, lower case: /sap/bc/adt/textelements/programs.
 	covered []string
 }
 
+// fallbackRetryAfter is how long a failed discovery read is remembered. On
+// 7.40 one read can take tens of seconds, and without it every router 404
+// and every ATC or text call would spend them again.
+const fallbackRetryAfter = time.Minute
+
 // FallbackPath returns the path to use for a standard ADT path: the path
 // itself, or its stand-in under FallbackRoot when the system advertises the
 // stand-in and not the standard collection. A discovery that cannot be read
-// leaves the path as it is, and is asked again next time.
+// leaves the path as it is, and is asked again after fallbackRetryAfter.
 func (c *Client) FallbackPath(ctx context.Context, path string) string {
 	if !strings.HasPrefix(strings.ToLower(path), adtRoot+"/") || strings.HasPrefix(strings.ToLower(path), FallbackRoot+"/") {
 		return path
@@ -108,7 +119,8 @@ type fallbackReadKey struct{}
 // routes returns the hrefs of the discovery document and the standard paths
 // the stand-ins cover, reading the document the first time. Callers that
 // come while it is read wait for that read; ok is false when it fails, and
-// the next caller reads again. The maps are never changed once stored.
+// for fallbackRetryAfter after that, unless the read failed because its
+// caller gave up. The maps are never changed once stored.
 func (r *fallbackRoutes) routes(ctx context.Context, c *Client) (hrefs map[string]bool, covered []string, ok bool) {
 	if ctx.Value(fallbackReadKey{}) != nil {
 		return nil, nil, false
@@ -119,6 +131,10 @@ func (r *fallbackRoutes) routes(ctx context.Context, c *Client) (hrefs map[strin
 			hrefs, covered = r.hrefs, r.covered
 			r.mu.Unlock()
 			return hrefs, covered, true
+		}
+		if !r.failedAt.IsZero() && r.clock().Sub(r.failedAt) < fallbackRetryAfter {
+			r.mu.Unlock()
+			return nil, nil, false
 		}
 		if wait := r.reading; wait != nil {
 			r.mu.Unlock()
@@ -144,12 +160,21 @@ func (r *fallbackRoutes) routes(ctx context.Context, c *Client) (hrefs map[strin
 		r.mu.Lock()
 		if hrefs != nil {
 			r.hrefs, r.covered, r.loaded = hrefs, covered, true
+		} else if ctx.Err() == nil {
+			r.failedAt = r.clock()
 		}
 		r.reading = nil
 		close(done)
 		r.mu.Unlock()
 		return hrefs, covered, hrefs != nil
 	}
+}
+
+func (r *fallbackRoutes) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
 }
 
 // parseFallbackDiscovery collects every href of the discovery document and,

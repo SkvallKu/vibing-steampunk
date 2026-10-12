@@ -7,7 +7,8 @@ import (
 
 // advertises tells whether the discovery document lists the collection href
 // (a standard path, no query). known is false when discovery cannot be read,
-// and the caller keeps its usual way; it is asked again next time. The
+// and the caller keeps its usual way; it is asked again after
+// fallbackRetryAfter. The
 // document is the one FallbackPath reads, so it is read once for both.
 func (c *Client) advertises(ctx context.Context, href string) (present, known bool) {
 	hrefs, _, ok := c.fallback.routes(ctx, c)
