@@ -336,3 +336,13 @@ func TestTunnelNamesTheStreamingSetting(t *testing.T) {
 		t.Errorf("Do: err = %v, want no streaming hint", err)
 	}
 }
+
+// A code vsp has no key for is refused for that reason, not as another
+// language than the logon's.
+func TestTunnelNamesAnUnknownLanguage(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://h/sap/bc/adt/textelements/programs/zprog?sap-language=EO", nil)
+	err := NewTunnelDoer(Params{Language: "E"}).checkLanguage(req.URL)
+	if err == nil || !strings.Contains(err.Error(), "no SAP language key") {
+		t.Errorf("err = %v, want the unknown-code refusal", err)
+	}
+}
