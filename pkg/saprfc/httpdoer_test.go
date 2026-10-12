@@ -1,11 +1,14 @@
 package saprfc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/oisee/open-rfc-go/rfc"
 )
@@ -100,8 +103,178 @@ func TestTunnelRefusesAnotherLanguage(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "logon language") {
 			t.Errorf("Do: err = %v, want the language refusal", err)
 		}
-		if d.client != nil {
+		if d.shared.line != nil || d.context.line != nil {
 			t.Errorf("Do dialled for a refused request")
 		}
+	}
+}
+
+// fakeLine stands for one tunnel line: it keeps the URIs it was sent and
+// answers each with err.
+type fakeLine struct {
+	pinned bool
+	err    error
+
+	mu     sync.Mutex
+	uris   []string
+	closed bool
+}
+
+func (f *fakeLine) Call(_ context.Context, _ string, in rfc.Params) (rfc.Result, error) {
+	req, _ := in["REQUEST"].(map[string]any)
+	line, _ := req["REQUEST_LINE"].(map[string]any)
+	uri, _ := line["URI"].(string)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uris = append(f.uris, uri)
+	return rfc.Result{}, f.err
+}
+
+func (f *fakeLine) close(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = true
+	return nil
+}
+
+// fakeTunnel is a TunnelDoer whose lines are fakes; it keeps every line it
+// dialled.
+type fakeTunnel struct {
+	*TunnelDoer
+	mu    sync.Mutex
+	lines []*fakeLine
+	// sharedErr is what the shared lines answer.
+	sharedErr error
+}
+
+func newFakeTunnel(sharedErr error) *fakeTunnel {
+	ft := &fakeTunnel{sharedErr: sharedErr}
+	ft.TunnelDoer = &TunnelDoer{dial: func(_ context.Context, _ Params, pinned bool) (*tunnelLine, error) {
+		f := &fakeLine{pinned: pinned, err: errors.New("fake answer")}
+		if !pinned && ft.sharedErr != nil {
+			f.err = ft.sharedErr
+		}
+		ft.mu.Lock()
+		ft.lines = append(ft.lines, f)
+		ft.mu.Unlock()
+		return &tunnelLine{caller: f, close: f.close}, nil
+	}}
+	return ft
+}
+
+func (ft *fakeTunnel) send(t *testing.T, method, uri, sessionType string) {
+	t.Helper()
+	req, err := http.NewRequest(method, "http://h"+uri, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sessionType != "" {
+		req.Header.Set("X-sap-adt-sessiontype", sessionType)
+	}
+	_, _ = ft.Do(req)
+}
+
+// A lock lives in the ABAP session that took it. Over HTTP sap-contextid
+// keeps LOCK, the write and UNLOCK in it; over the tunnel the pinned session
+// does. Through the pool, a read running in parallel could take the session
+// the LOCK left behind, and the PUT would go to another, to be refused with
+// 423 while the lock stayed where it was.
+func TestTunnelKeepsTheContextOnOneSession(t *testing.T) {
+	ft := newFakeTunnel(nil)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ft.send(t, "GET", fmt.Sprintf("/sap/bc/adt/read/%d", i), "stateless")
+		}(i)
+	}
+	chain := []string{"/sap/bc/adt/x?_action=LOCK", "/sap/bc/adt/x/source/main?lockHandle=h", "/sap/bc/adt/x?_action=UNLOCK"}
+	ft.send(t, "POST", chain[0], "stateful")
+	ft.send(t, "PUT", chain[1], "stateful")
+	// A request with no session type belongs to the context too, as it
+	// does in adt.Transport.do.
+	ft.send(t, "POST", chain[2], "")
+	wg.Wait()
+
+	var pinned []*fakeLine
+	reads := 0
+	for _, l := range ft.lines {
+		if l.pinned {
+			pinned = append(pinned, l)
+			continue
+		}
+		reads += len(l.uris)
+		for _, u := range l.uris {
+			if !strings.HasPrefix(u, "/sap/bc/adt/read/") {
+				t.Errorf("%s went through the pool", u)
+			}
+		}
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("%d pinned lines dialled, want 1", len(pinned))
+	}
+	if got := strings.Join(pinned[0].uris, " "); got != strings.Join(chain, " ") {
+		t.Errorf("pinned session got %s, want the chain %s", got, strings.Join(chain, " "))
+	}
+	if reads != 20 {
+		t.Errorf("%d reads through the pool, want 20", reads)
+	}
+}
+
+// A dump in a read drops the pooled line, not the pinned session that may be
+// holding a lock: the chain goes on where it was.
+func TestTunnelDumpInReadKeepsTheContext(t *testing.T) {
+	ft := newFakeTunnel(&rfc.ABAPException{Kind: rfc.KindRuntime, RuntimeID: "DBSQL_SQL_ERROR"})
+	ft.send(t, "POST", "/sap/bc/adt/x?_action=LOCK", "stateful")
+	ft.send(t, "GET", "/sap/bc/adt/read", "stateless")
+	ft.send(t, "POST", "/sap/bc/adt/x?_action=UNLOCK", "stateful")
+
+	var pinned, shared []*fakeLine
+	for _, l := range ft.lines {
+		if l.pinned {
+			pinned = append(pinned, l)
+		} else {
+			shared = append(shared, l)
+		}
+	}
+	if len(pinned) != 1 || len(pinned[0].uris) != 2 {
+		t.Fatalf("pinned lines %d, want one carrying LOCK and UNLOCK", len(pinned))
+	}
+	if pinned[0].closed {
+		t.Errorf("the dump in a read closed the pinned session")
+	}
+	if ft.shared.line != nil {
+		t.Errorf("the pooled line that dumped is still in use")
+	}
+	if len(shared) != 1 {
+		t.Errorf("%d pooled lines dialled, want 1", len(shared))
+	}
+}
+
+// A pinned session left idle may have been closed under it. The pool checks
+// its sessions before handing one out; the pinned line pings after a pause,
+// and a dead session is replaced before the request rather than failing it.
+func TestTunnelPingsThePinnedSessionAfterAPause(t *testing.T) {
+	ft := newFakeTunnel(nil)
+	ft.send(t, "POST", "/sap/bc/adt/x?_action=LOCK", "stateful")
+	first := ft.context.line
+	pinged := 0
+	first.ping = func(context.Context) error { pinged++; return rfc.ErrClosed }
+
+	ft.send(t, "POST", "/sap/bc/adt/x?_action=LOCK", "stateful")
+	if pinged != 0 || ft.context.line != first {
+		t.Fatalf("pinged %d times right after a request", pinged)
+	}
+	first.used.Store(time.Now().Add(-2 * pinnedIdleCheck).UnixNano())
+	ft.send(t, "POST", "/sap/bc/adt/x?_action=LOCK", "stateful")
+	if pinged != 1 {
+		t.Fatalf("pinged %d times after a pause, want 1", pinged)
+	}
+	if ft.context.line == first {
+		t.Fatalf("the dead session is still in use")
+	}
+	if n := len(ft.lines[len(ft.lines)-1].uris); n != 1 {
+		t.Errorf("the new session got %d requests, want the one after the pause", n)
 	}
 }
