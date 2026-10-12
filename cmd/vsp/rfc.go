@@ -560,23 +560,11 @@ func rfcDestinationFor(cmd *cobra.Command) (saprfc.Params, error) {
 	if verbose, _ := cmd.Flags().GetBool("verbose"); verbose {
 		via := "direct"
 		if dest.Router != "" {
-			via = "via SAProuter " + redactRouterPW(dest.Router)
+			via = "via SAProuter " + saprfc.RedactRoute(dest.Router)
 		}
 		fmt.Fprintf(os.Stderr, "[INFO] RFC %s:%d (sysnr %s) client %s user %s [%s]\n", dest.Host, dest.Port, dest.Sysnr, dest.Client, dest.User, via)
 	}
 	return dest, nil
-}
-
-// redactRouterPW hides any "/W/<password>" hop in a SAProuter route string so a
-// verbose log line never carries the router password.
-func redactRouterPW(route string) string {
-	parts := strings.Split(route, "/")
-	for i := 0; i+1 < len(parts); i++ {
-		if strings.EqualFold(parts[i], "W") && parts[i+1] != "" {
-			parts[i+1] = "***"
-		}
-	}
-	return strings.Join(parts, "/")
 }
 
 func emitRFC(v any) error {

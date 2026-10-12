@@ -64,7 +64,7 @@ func (s *Server) handleInfo(ctx context.Context) *mcp.CallToolResult {
 	// an instance derived from that port would describe nothing.
 	if dest, ok := rfcTunnelDest(s.config); ok {
 		fmt.Fprintf(&b, "  route        ADT over RFC — gateway %s instance %s via SAProuter %s (the URL's host and port are not used)\n",
-			dest.Host, dest.Sysnr, strings.TrimSuffix(dest.Router, "/H/"))
+			dest.Host, dest.Sysnr, saprfc.RedactRoute(strings.TrimSuffix(dest.Router, "/H/")))
 	} else {
 		host, sysnr := saprfc.SysnrFromURL(s.config.BaseURL)
 		writeHTTPRoute(&b, host, sysnr)

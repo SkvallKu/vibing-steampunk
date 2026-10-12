@@ -461,7 +461,7 @@ func checkRFCOverride(in saprfc.Input) error {
 	if in.SaprouterFlag != "" && !saprfc.SameRoute(in.SaprouterFlag, in.RFCSaprouter) {
 		return fmt.Errorf("rfc saprouter override %q is blocked: it differs from this server's own route %q, "+
 			"and the configured RFC credentials are not sent through another router "+
-			"(set rfc_saprouter for that system in .vsp.json)", in.SaprouterFlag, in.RFCSaprouter)
+			"(set rfc_saprouter for that system in .vsp.json)", saprfc.RedactRoute(in.SaprouterFlag), saprfc.RedactRoute(in.RFCSaprouter))
 	}
 	if in.HostFlag == "" && in.SysnrFlag == "" && in.PortFlag == 0 {
 		return nil

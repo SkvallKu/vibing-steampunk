@@ -173,6 +173,19 @@ func SameRoute(a, b string) bool {
 	return normalizeRoutePrefix(a) == normalizeRoutePrefix(b)
 }
 
+// RedactRoute hides the password of every "/W/<password>" hop in a SAProuter
+// route string, for anything that prints a route: an MCP answer lands in the
+// agent's transcript, a log in whoever reads it.
+func RedactRoute(route string) string {
+	parts := strings.Split(route, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if strings.EqualFold(parts[i], "W") && parts[i+1] != "" {
+			parts[i+1] = "***"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
 func normalizeRoutePrefix(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {

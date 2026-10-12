@@ -1,6 +1,9 @@
 package mcp
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/oisee/vibing-steampunk/pkg/adt"
@@ -70,5 +73,34 @@ func TestRFCTunnelDest_CarriesThePin(t *testing.T) {
 	}
 	if err := dest.Expect.CheckConfigured(dest.User, dest.Client); err == nil {
 		t.Errorf("RFC user %s passes a pin for READER", dest.User)
+	}
+}
+
+// A SAProuter password in the route ("/W/<password>") is never part of an
+// answer: the info card and a refused route override name the route with it
+// masked, since what an MCP tool answers lands in the agent's transcript.
+func TestRouteAnswersHideTheRouterPassword(t *testing.T) {
+	sap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-csrf-token", "test-token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer sap.Close()
+	s := serverFor(t, sap.URL, "200", "prodsys-b")
+	s.config.Username, s.config.Password = "READER", "reader-secret"
+	s.config.System = &config.SystemConfig{RFCHost: "10.0.0.2", RFCSysnr: "02", RFCSaprouter: "/H/router.example/S/3299/W/r0uter-pw"}
+	s.adtClient = adt.NewClient(sap.URL, "READER", "reader-secret")
+
+	card := resultText(s.handleInfo(t.Context()))
+	if !strings.Contains(card, "via SAProuter") {
+		t.Fatalf("the card shows no route:\n%s", card)
+	}
+	_, err := s.rfcDestination(map[string]any{"saprouter": "/H/other.example/W/other-pw"})
+	if err == nil {
+		t.Fatal("a route override was not refused")
+	}
+	for _, text := range []string{card, err.Error()} {
+		if strings.Contains(text, "r0uter-pw") || strings.Contains(text, "other-pw") {
+			t.Errorf("a router password is in the answer:\n%s", text)
+		}
 	}
 }
