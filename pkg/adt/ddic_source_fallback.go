@@ -29,10 +29,18 @@ func (c *Client) ddicSourceFromTables(ctx context.Context, name string) (string,
 		return "", fmt.Errorf("%s is a view, not a table", name)
 	}
 
-	fields, err := c.GetTableContents(ctx, "DD03L", UnlimitedRows,
+	// Not UnlimitedRows: 7.40 SP06 answers a request above rowFallbackAbove
+	// with 100 rows, and a definition cut to its first hundred lines would
+	// look whole. A table has a few hundred lines in DD03L, its includes'
+	// fields among them; one that fills the request is refused rather than
+	// written short.
+	fields, err := c.GetTableContents(ctx, "DD03L", rowFallbackAbove,
 		fmt.Sprintf("SELECT * FROM DD03L WHERE TABNAME = '%s' AND AS4LOCAL = 'A'", lit))
 	if err != nil {
 		return "", err
+	}
+	if len(fields.Rows) >= rowFallbackAbove {
+		return "", fmt.Errorf("%s has %d or more lines in DD03L, more than one data preview request answers whole; vsp cannot write its definition", name, rowFallbackAbove)
 	}
 
 	label := ""
