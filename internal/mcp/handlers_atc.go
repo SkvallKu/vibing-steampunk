@@ -66,6 +66,10 @@ func (s *Server) handleRunATCCheck(ctx context.Context, request mcp.CallToolRequ
 		Errors        int `json:"errors"`
 		Warnings      int `json:"warnings"`
 		Infos         int `json:"infos"`
+		// Notes are what the system said about the run, beside the counts:
+		// on 7.40 a check variant that does not exist is replaced by DEFAULT
+		// and said so only here, and the findings are DEFAULT's.
+		Notes []string `json:"notes,omitempty"`
 	}
 	type output struct {
 		Summary  summary          `json:"summary"`
@@ -85,6 +89,10 @@ func (s *Server) handleRunATCCheck(ctx context.Context, request mcp.CallToolRequ
 				sum.Infos++
 			}
 		}
+	}
+
+	for _, info := range result.Infos {
+		sum.Notes = append(sum.Notes, info.Description)
 	}
 
 	out := output{Summary: sum, Worklist: result}
