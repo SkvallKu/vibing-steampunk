@@ -77,7 +77,9 @@ packages, DDIC objects, and some that no release has at all. The branch
 `adt-fallback` is `patched` plus a small ABAP set that stands in for them under
 `/sap/bc/adt/zvsp`, in the standard resource's own protocol where there is one.
 vsp finds the stand-ins in the discovery document and goes to the standard
-resource again once the system has it (after an upgrade). Release tags from
+resource again once the system has it (after an upgrade). A vsp process reads the
+discovery document once: restart a running MCP server after an install or upgrade.
+Release tags from
 `v2.60.0-patch.1` on are built from this branch.
 
 ```sh
@@ -96,7 +98,7 @@ authorization `--print-report` gives the report to run in SE38.
 | Stand-in | Releases | vsp |
 |---|---|---|
 | `/textelements` (programs, classes) | 7.40, 7.50 | `vsp texts`, `GetTextElements`, `SetTextElements` |
-| `/packages` (read, create, delete) | 7.40, 7.50 | `CreatePackage`, `GetPackage` |
+| `/packages` (read, create, delete) | 7.40, 7.50 | `CreatePackage`, the package checks before a create (`PackageExists`), `DeleteObject` of a DEVC |
 | `/ddic/tables`, `/ddic/structures` (as source) | 7.40, 7.50 | `GetTable`, `GetStructure`, `WriteSource TABL\|STRUCT` |
 | `/ddic/domains`, `/ddic/dataelements` | 7.40 (DTEL), 7.40–7.50 (DOMA) | `vsp doma\|dtel`, `GetDomain`, `WriteDomain`, `GetDataElement`, `WriteDataElement` |
 | `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |

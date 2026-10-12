@@ -30,9 +30,11 @@ var installADTFallbackCmd = &cobra.Command{
 
 On a release without a standard ADT resource vsp then uses the stand-in under
 /sap/bc/adt/zvsp, found through the discovery document; once the system has the
-standard resource (after an upgrade) vsp uses that again. Covered now:
+standard resource (after an upgrade) vsp uses that again. A vsp process reads
+the document once: restart a running MCP server after an install or upgrade.
+Covered now:
   /sap/bc/adt/textelements    (programs, classes) — vsp texts, GetTextElements
-  /sap/bc/adt/packages        (read, create, delete) — CreatePackage, GetPackage
+  /sap/bc/adt/packages        (read, create, delete) — CreatePackage, package checks, DEVC delete
   /sap/bc/adt/ddic/tables     (transparent tables as source) — GetTable, WriteSource TABL
   /sap/bc/adt/ddic/structures (structures as source, 7.40) — GetStructure, WriteSource STRUCT
   /sap/bc/adt/ddic/domains    (7.40, 7.50) — vsp doma, GetDomain, WriteDomain

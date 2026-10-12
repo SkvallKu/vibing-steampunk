@@ -79,7 +79,8 @@ ABAP-набор, подменяющий ресурсы ADT, которых не�
 `adt-fallback` — это `patched` плюс небольшой набор ABAP, который подменяет их под
 `/sap/bc/adt/zvsp`, по протоколу стандартного ресурса, если он где-то есть.
 vsp находит подмены в discovery и снова идёт в стандартный ресурс, когда он у системы
-появляется (после обновления). Теги релизов начиная с `v2.60.0-patch.1` собираются из
+появляется (после обновления). Discovery читается процессом vsp один раз: после установки
+или обновления запущенный MCP-сервер надо перезапустить. Теги релизов начиная с `v2.60.0-patch.1` собираются из
 этой ветки.
 
 ```sh
@@ -98,7 +99,7 @@ vsp -s DEV uninstall adt-fallback           # всё убрать
 | Подмена | Релизы | vsp |
 |---|---|---|
 | `/textelements` (программы, классы) | 7.40, 7.50 | `vsp texts`, `GetTextElements`, `SetTextElements` |
-| `/packages` (чтение, создание, удаление) | 7.40, 7.50 | `CreatePackage`, `GetPackage` |
+| `/packages` (чтение, создание, удаление) | 7.40, 7.50 | `CreatePackage`, проверки пакета перед созданием (`PackageExists`), `DeleteObject` пакета DEVC |
 | `/ddic/tables`, `/ddic/structures` (исходником) | 7.40, 7.50 | `GetTable`, `GetStructure`, `WriteSource TABL\|STRUCT` |
 | `/ddic/domains`, `/ddic/dataelements` | 7.40 (DTEL), 7.40–7.50 (DOMA) | `vsp doma\|dtel`, `GetDomain`, `WriteDomain`, `GetDataElement`, `WriteDataElement` |
 | `/ddic/tabletypes` | 7.40, 7.50 | `vsp ttyp`, `GetTableType`, `WriteTableType` |

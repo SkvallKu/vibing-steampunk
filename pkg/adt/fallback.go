@@ -20,6 +20,9 @@ import (
 // upgrade the stand-in is simply no longer used), the stand-in when only that
 // is advertised. The rule is the same for every resource and needs no list:
 // whatever the installed set advertises under FallbackRoot is what it covers.
+// The document is read once per client (a failed read again after
+// fallbackRetryAfter), so a set installed, or a system upgraded, while a vsp
+// process runs is seen by it after a restart.
 const FallbackRoot = "/sap/bc/adt/zvsp"
 
 const adtRoot = "/sap/bc/adt"
