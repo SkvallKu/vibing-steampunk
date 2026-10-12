@@ -50,6 +50,11 @@ type TunnelDoer struct {
 
 	mu     sync.Mutex
 	system *adt.ChannelSystem
+	// rejected is the refusal of a logon: the credentials do not change
+	// while the doer lives, and each attempt with a wrong password counts
+	// against login/fails_to_user_lock. Every later request gets it without
+	// a logon.
+	rejected error
 }
 
 // tunnelLine is one way through to the endpoint: the pooled client, or a
@@ -108,8 +113,20 @@ func (d *TunnelDoer) conn(ctx context.Context, slot *tunnelSlot, pinned bool) (*
 	if slot.line != nil {
 		return slot.line, nil
 	}
+	d.mu.Lock()
+	rejected := d.rejected
+	d.mu.Unlock()
+	if rejected != nil {
+		return nil, rejected
+	}
 	l, err := d.dial(ctx, d.dest, pinned)
 	if err != nil {
+		if errors.Is(err, rfc.ErrLogonRejected) {
+			err = fmt.Errorf("%w (not tried again until vsp is restarted)", err)
+			d.mu.Lock()
+			d.rejected = err
+			d.mu.Unlock()
+		}
 		return nil, err
 	}
 	l.used.Store(time.Now().UnixNano())

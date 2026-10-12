@@ -278,3 +278,39 @@ func TestTunnelPingsThePinnedSessionAfterAPause(t *testing.T) {
 		t.Errorf("the new session got %d requests, want the one after the pause", n)
 	}
 }
+
+// A rejected logon is not tried again: each attempt with a wrong password
+// counts against login/fails_to_user_lock, and an agent repeating its calls
+// would lock the user. Any other dial failure is tried again.
+func TestTunnelDoesNotRetryARejectedLogon(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err       error
+		wantDials int
+	}{
+		{"rejected", fmt.Errorf("%w: wrong password", rfc.ErrLogonRejected), 1},
+		{"network", errors.New("dial tcp: connection refused"), 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dials := 0
+			d := &TunnelDoer{dial: func(context.Context, Params, bool) (*tunnelLine, error) {
+				dials++
+				return nil, tc.err
+			}}
+			// Both lines log on with the same user; ChannelSystem is the fifth call.
+			for _, st := range []string{"stateless", "stateful", "stateless", ""} {
+				req, _ := http.NewRequest("GET", "http://h/sap/bc/adt/x", nil)
+				req.Header.Set("X-sap-adt-sessiontype", st)
+				if _, err := d.Do(req); !errors.Is(err, tc.err) {
+					t.Errorf("Do: err = %v, want %v", err, tc.err)
+				}
+			}
+			if _, err := d.ChannelSystem(context.Background()); !errors.Is(err, tc.err) {
+				t.Errorf("ChannelSystem: err = %v, want %v", err, tc.err)
+			}
+			if dials != tc.wantDials {
+				t.Errorf("dialled %d times, want %d", dials, tc.wantDials)
+			}
+		})
+	}
+}
