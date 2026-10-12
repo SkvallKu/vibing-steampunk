@@ -84,7 +84,7 @@ Release tags from
 
 ```sh
 vsp -s DEV install adt-fallback --dry-run   # what would change
-vsp -s DEV install adt-fallback             # install or update (0.12.2)
+vsp -s DEV install adt-fallback             # install or update (0.12.3)
 vsp -s DEV uninstall adt-fallback           # remove everything again
 ```
 

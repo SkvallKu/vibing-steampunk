@@ -39,6 +39,17 @@ CLASS zcl_vsp_adt_util DEFINITION
                 text          TYPE csequence OPTIONAL
       RAISING   cx_adt_rest.
 
+    "! Refuses to create an object in a package where the user may not
+    "! create it: S_DEVELOP with activity 01, as SE11 checks. The transport
+    "! and dictionary calls a create makes after it check nothing of the
+    "! kind, so without this a developer kept out of a package by DEVCLASS
+    "! could create there through vsp.
+    CLASS-METHODS check_create
+      IMPORTING object_type TYPE trobjtype
+                name        TYPE csequence
+                devclass    TYPE devclass
+      RAISING   cx_adt_rest.
+
     "! The body of a request as text lines.
     CLASS-METHODS request_lines
       IMPORTING request       TYPE REF TO if_adt_rest_request
@@ -97,6 +108,28 @@ CLASS zcl_vsp_adt_util IMPLEMENTATION.
     entity->set_content_type(
       iv_media_type = 'application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result' ).
     entity->set_binary_data( xml ).
+  ENDMETHOD.
+
+
+  METHOD check_create.
+    DATA objname TYPE sobj_name.
+
+    objname = name.
+    AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+      ID 'DEVCLASS' FIELD devclass
+      ID 'OBJTYPE'  FIELD object_type
+      ID 'OBJNAME'  FIELD objname
+      ID 'P_GROUP'  DUMMY
+      ID 'ACTVT'    FIELD '01'.
+    IF sy-subrc <> 0.
+      zcl_vsp_adt_txt_format=>set_message(
+        |No authorization to create { object_type } { objname } in package { devclass } (S_DEVELOP, activity 01)| ).
+      RAISE EXCEPTION TYPE cx_adt_res_no_authorization
+        EXPORTING
+          textid        = cx_adt_rest=>create_textid_from_msg_params( )
+          resource_type = CONV #( object_type )
+          resource_id   = CONV #( objname ).
+    ENDIF.
   ENDMETHOD.
 
 

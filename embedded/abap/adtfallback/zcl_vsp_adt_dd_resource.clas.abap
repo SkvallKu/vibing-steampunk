@@ -601,6 +601,7 @@ CLASS zcl_vsp_adt_dd_resource IMPLEMENTATION.
           textid = cx_adt_rest=>create_textid_from_msg_params( ).
     ENDIF.
 
+    zcl_vsp_adt_util=>check_create( object_type = object_type( ) name = name devclass = devclass ).
     corr_insert( request = request devclass = devclass mode = 'INSERT' ).
     write( root = root is_new = abap_true ).
     to_working_area( ).

@@ -85,7 +85,7 @@ vsp находит подмены в discovery и снова идёт в ста�
 
 ```sh
 vsp -s DEV install adt-fallback --dry-run   # что изменится
-vsp -s DEV install adt-fallback             # установить или обновить (0.12.2)
+vsp -s DEV install adt-fallback             # установить или обновить (0.12.3)
 vsp -s DEV uninstall adt-fallback           # всё убрать
 ```
 

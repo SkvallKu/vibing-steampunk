@@ -444,6 +444,7 @@ CLASS zcl_vsp_adt_tabl_resource IMPLEMENTATION.
           textid = cx_adt_rest=>create_textid_from_msg_params( ).
     ENDIF.
 
+    zcl_vsp_adt_util=>check_create( object_type = 'TABL' name = name devclass = devclass ).
     corr_insert( request = request devclass = devclass mode = 'INSERT' ).
 
     dd02v-tabname = name.
