@@ -177,3 +177,26 @@ func TestADTStopListenerViaSendsTheDetachDelete(t *testing.T) {
 		t.Error("a refused deletion was recorded as done")
 	}
 }
+
+// A listener that waits out its timeout is answered with an empty 200 on some
+// releases and, on 7.50, with a 500 of subType autoAttachTimeout. Both mean
+// nobody stopped; any other refusal is still an error.
+func TestADTListenTimeoutIsNobodyStopped(t *testing.T) {
+	const listen = "POST /sap/bc/adt/debugger/listeners"
+	for name, tc := range map[string]struct {
+		answer  *ADTResponse
+		wantErr bool
+	}{
+		"empty 200":              {&ADTResponse{Status: 200}, false},
+		"7.50 autoAttachTimeout": {ended("autoAttachTimeout"), false},
+		"other 500":              {ended("notAuthorized"), true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := NewADTDebugger(&detachTransport{answers: map[string]*ADTResponse{listen: tc.answer}}, "TESTUSER")
+			who, err := d.ADTListen(context.Background(), "", IDEID, TerminalID, 5)
+			if who != nil || (err != nil) != tc.wantErr {
+				t.Errorf("ADTListen = %v, %v; want nobody, error %v", who, err, tc.wantErr)
+			}
+		})
+	}
+}

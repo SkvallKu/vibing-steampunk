@@ -82,11 +82,16 @@ func (d *Debugger) ADTListen(ctx context.Context, user, ideID, terminalID string
 	if err != nil {
 		return nil, err
 	}
+	if len(res.Body) == 0 && res.Status == 200 {
+		return nil, nil // the listener timed out: nobody stopped
+	}
+	// 7.50 ends a listener that waited out its timeout with a 500 whose
+	// subType is autoAttachTimeout, not an empty 200: nobody stopped there too.
+	if res.Status == 500 && between(string(res.Body), `subType">`, "<") == "autoAttachTimeout" {
+		return nil, nil
+	}
 	if res.Status != 200 {
 		return nil, adtError("listen", res)
-	}
-	if len(res.Body) == 0 {
-		return nil, nil // the listener timed out: nobody stopped
 	}
 	var list adtDebuggeeList
 	if err := xml.Unmarshal(res.Body, &list); err != nil {
