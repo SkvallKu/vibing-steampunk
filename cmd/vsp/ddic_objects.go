@@ -24,8 +24,9 @@ var domaCmd = &cobra.Command{
 
 A write reads the domain, changes what the flags name, puts the whole
 domain back and activates it. Texts are the master language's, as ADT
-serves them; a new domain's master language is the logon language. --dry-run
-shows the result and writes nothing.`,
+serves them, and only a logon in that language changes them; a new domain's
+master language is the logon language. --dry-run shows the result and
+writes nothing.`,
 }
 
 var dtelCmd = &cobra.Command{
@@ -44,7 +45,8 @@ The type is one of --domain, --type/--length/--decimals (a predefined type),
 or --type-kind with --type-name for a reference (refToDictionaryType,
 refToClifType; refToPredefinedAbapType takes --type). --label sets all
 four labels at once. A label gets the full length of its field. Texts are
-the master language's; a new element's is the logon language.`,
+the master language's, and only a logon in that language changes them; a
+new element's is the logon language.`,
 }
 
 func init() {

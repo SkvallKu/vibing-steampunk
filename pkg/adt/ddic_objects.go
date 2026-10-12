@@ -22,10 +22,13 @@ import (
 //
 // A new object is created empty (CreateObject), then written and activated
 // like any change. The texts the GET serves are the master language's
-// (7.50 serves a German original in German to a Russian logon); which
-// language a PUT writes to an object whose master language is not the
-// logon language is not checked. A new object takes the logon language as
-// its master language.
+// (7.50 serves a German original in German to a Russian logon), and the PUT
+// writes them back there whatever the logon language: a German domain
+// changed from a Russian logon kept DD01T and DD07T in D only, with the
+// Russian text in them. So a change to the texts from another logon
+// language than the master's is refused (checkTextLanguage); a change that
+// leaves them alone puts them back as read. A new object takes the logon
+// language as its master language.
 
 const (
 	// ObjectTypeDomain is a DDIC domain (SE11).
@@ -377,6 +380,52 @@ func parseDataElement(body []byte) (*DataElement, error) {
 
 // --- writing ---
 
+// checkTextLanguage refuses a change to an object's texts from a logon in
+// another language than its master language: the text, given in the logon
+// language, would replace the original's, not be added as a translation.
+func (c *Client) checkTextLanguage(h ddicHeader, typ CreatableObjectType, textsChanged bool) error {
+	if !textsChanged || strings.TrimSpace(h.MasterLanguage) == "" {
+		return nil
+	}
+	if SAPLanguageKey(h.MasterLanguage) == SAPLanguageKey(c.config.Language) {
+		return nil
+	}
+	master, logon := strings.ToUpper(h.MasterLanguage), strings.ToUpper(c.config.Language)
+	return fmt.Errorf("%s %s: its master language is %s and the logon language %s; its texts are written to %s, so a text given here would replace the %s one, not translate it. "+
+		"Change the texts from a logon in %s; anything else can be changed from this one", typ, h.Name, master, logon, master, master, master)
+}
+
+// fixValueTexts is a domain's fixed value texts by value.
+func fixValueTexts(d *Domain) map[string]string {
+	m := make(map[string]string, len(d.FixValues))
+	for _, v := range d.FixValues {
+		m[v.Low+".."+v.High] = v.Text
+	}
+	return m
+}
+
+// domainTextsChanged tells whether after has a text before did not: a new
+// short text, or a fixed value whose text is new or different. Dropping a
+// fixed value writes no text.
+func domainTextsChanged(before, after *Domain) bool {
+	if before.Description != after.Description {
+		return true
+	}
+	old := fixValueTexts(before)
+	for k, t := range fixValueTexts(after) {
+		if o, ok := old[k]; (!ok && t != "") || (ok && o != t) {
+			return true
+		}
+	}
+	return false
+}
+
+func dataElementTextsChanged(before, after *DataElement) bool {
+	return before.Description != after.Description || before.ShortLabel != after.ShortLabel ||
+		before.MediumLabel != after.MediumLabel || before.LongLabel != after.LongLabel ||
+		before.HeadingLabel != after.HeadingLabel
+}
+
 func xmlEl(tag, value string) string {
 	if value == "" {
 		return "<" + tag + "/>"
@@ -626,7 +675,12 @@ func (c *Client) UpdateDomain(ctx context.Context, name, transport string, chang
 			return nil, fmt.Errorf("parsing domain %s: %w", name, err)
 		}
 		d.Name = name
+		before := *d
+		before.FixValues = append([]DomainFixValue(nil), d.FixValues...)
 		if err := change(d); err != nil {
+			return nil, err
+		}
+		if err := c.checkTextLanguage(d.ddicHeader, ObjectTypeDomain, domainTextsChanged(&before, d)); err != nil {
 			return nil, err
 		}
 		if err := d.Check(); err != nil {
@@ -671,6 +725,9 @@ func (c *Client) UpdateDataElement(ctx context.Context, name, transport string, 
 		e.Name = name
 		before := *e
 		if err := change(e); err != nil {
+			return nil, err
+		}
+		if err := c.checkTextLanguage(e.ddicHeader, ObjectTypeDataElement, dataElementTextsChanged(&before, e)); err != nil {
 			return nil, err
 		}
 		e.relengthChangedLabels(&before)

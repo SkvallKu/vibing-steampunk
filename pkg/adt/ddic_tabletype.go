@@ -526,6 +526,10 @@ func (c *Client) UpdateTableType(ctx context.Context, name, transport string, ch
 		if err := change(&probe); err != nil {
 			return nil, err
 		}
+		// Before the range structure is made: a refused change writes nothing.
+		if err := c.checkTextLanguage(probe.ddicHeader, ObjectTypeTableType, probe.Description != before.Description); err != nil {
+			return nil, err
+		}
 		if probe.IsRange() {
 			note, err := c.ensureRangeStructure(ctx, &probe, before.Package, transport)
 			if err != nil {
@@ -542,7 +546,11 @@ func (c *Client) UpdateTableType(ctx context.Context, name, transport string, ch
 			return nil, fmt.Errorf("parsing table type %s: %w", name, err)
 		}
 		t.Name = name
+		description := t.Description
 		if err := change(t); err != nil {
+			return nil, err
+		}
+		if err := c.checkTextLanguage(t.ddicHeader, ObjectTypeTableType, t.Description != description); err != nil {
 			return nil, err
 		}
 		t.fillDefaults()

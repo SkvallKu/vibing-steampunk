@@ -220,3 +220,100 @@ func TestUpdateDomainRefusesBeforeLockingWhenTheEditIsWrong(t *testing.T) {
 		t.Errorf("the lock was not released")
 	}
 }
+
+// A domain's texts are the master language's, and the PUT writes them back
+// there whatever the logon language (7.50: a German domain changed from a
+// Russian logon kept DD01T and DD07T in D only, with the Russian text). A
+// text change from another logon language is refused before the PUT; a
+// change that leaves the texts alone goes through.
+func TestDDICTextChangeFromAnotherLogonLanguage(t *testing.T) {
+	germanDomain := strings.Replace(testDomainXML, `adtcore:masterLanguage="RU"`, `adtcore:masterLanguage="DE"`, 1)
+	germanElement := strings.Replace(testDataElementXML, `adtcore:masterLanguage="RU"`, `adtcore:masterLanguage="DE"`, 1)
+	germanTableType := strings.Replace(testTableTypeXML, `adtcore:masterLanguage="EN"`, `adtcore:masterLanguage="DE"`, 1)
+	cases := []struct {
+		name    string
+		logon   string
+		write   func(c *Client) error
+		refused bool
+	}{
+		{"domain short text", "RU", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error { d.Description = "Вид"; return nil })
+			return err
+		}, true},
+		{"domain new fixed value", "RU", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error {
+				d.FixValues = append(d.FixValues, DomainFixValue{Low: "02", Text: "Второй"})
+				return nil
+			})
+			return err
+		}, true},
+		{"domain fixed value text", "RU", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error { d.FixValues[0].Text = "Первый"; return nil })
+			return err
+		}, true},
+		{"domain fixed value dropped", "RU", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error { d.FixValues = d.FixValues[1:]; return nil })
+			return err
+		}, false},
+		{"domain lower case", "RU", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error { d.Lowercase = true; return nil })
+			return err
+		}, false},
+		{"domain short text, master logon", "DE", func(c *Client) error {
+			_, err := c.UpdateDomain(context.Background(), "ZDEMO_KIND", "", func(d *Domain) error { d.Description = "Art"; return nil })
+			return err
+		}, false},
+		{"data element label", "RU", func(c *Client) error {
+			_, err := c.UpdateDataElement(context.Background(), "ZDEMO_KIND", "", func(e *DataElement) error { e.HeadingLabel = "Вид"; return nil })
+			return err
+		}, true},
+		{"data element parameter", "RU", func(c *Client) error {
+			_, err := c.UpdateDataElement(context.Background(), "ZDEMO_KIND", "", func(e *DataElement) error { e.SetGetParameter = "ZKE"; return nil })
+			return err
+		}, false},
+		{"table type short text", "RU", func(c *Client) error {
+			_, err := c.UpdateTableType(context.Background(), "ZDEMO_KV_T", "", func(t *TableType) error { t.Description = "Пары"; return nil })
+			return err
+		}, true},
+		{"table type secondary keys", "RU", func(c *Client) error {
+			_, err := c.UpdateTableType(context.Background(), "ZDEMO_KV_T", "", func(t *TableType) error { t.SecondaryKeys = nil; return nil })
+			return err
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &adtRecorder{}
+			client := newStubbedClient(t, rec, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Query().Get("_action") == "LOCK":
+					_, _ = io.WriteString(w, testLockXML)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/ddic/domains/"):
+					_, _ = io.WriteString(w, germanDomain)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/ddic/dataelements/"):
+					_, _ = io.WriteString(w, germanElement)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/ddic/tabletypes/"):
+					_, _ = io.WriteString(w, germanTableType)
+				default:
+					w.WriteHeader(http.StatusOK)
+				}
+			}, WithLanguage(tc.logon))
+			err := tc.write(client)
+			put := indexOfCall(rec.snapshot(), func(c wireCall) bool { return c.method == http.MethodPut }) >= 0
+			if tc.refused {
+				if err == nil || !strings.Contains(err.Error(), "master language is DE") {
+					t.Errorf("err = %v, want the master language refusal", err)
+				}
+				if put {
+					t.Errorf("a PUT went out")
+				}
+				if indexOfCall(rec.snapshot(), isLock) >= 0 && indexOfCall(rec.snapshot(), isUnlock) < 0 {
+					t.Errorf("the lock was not released")
+				}
+				return
+			}
+			if err != nil || !put {
+				t.Errorf("err = %v, PUT sent %v; want the write", err, put)
+			}
+		})
+	}
+}
